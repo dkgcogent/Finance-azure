@@ -1,3 +1,5 @@
+import { API_BASE_URL } from '@/lib/api';
+
 export type Invoice = {
   id: string
   invoiceNumber: string
@@ -13,7 +15,6 @@ export type Invoice = {
   billing_address?: string
 }
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3004/api';
 
 export const fetchCustomerInvoices = async (financialYear: string): Promise<Invoice[]> => {
   try {
