@@ -30,8 +30,10 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Finance Budgeting API is healthy' });
 });
 
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
 
 export default app;
