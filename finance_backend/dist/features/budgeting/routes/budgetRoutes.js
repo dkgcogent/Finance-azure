@@ -1,0 +1,18 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const budgetController_1 = require("../controllers/budgetController");
+const router = (0, express_1.Router)();
+// Protect all routes - Temporarily disabled until auth is implemented
+// router.use(authenticateToken);
+router.get('/financial-years', budgetController_1.getAvailableYears);
+router.get('/revenue-direct-expense', budgetController_1.getRevenueDirectExpenses);
+router.post('/revenue-direct-expense', budgetController_1.saveRevenueDirectExpenses);
+router.get('/corporate-expenses', budgetController_1.getCorporateExpenses);
+router.post('/corporate-expenses', budgetController_1.saveCorporateExpenses);
+router.get('/salaries', budgetController_1.getSalaries);
+router.post('/salaries', budgetController_1.saveSalaries);
+router.get('/bank-charges', budgetController_1.getBankCharges);
+router.post('/bank-charges', budgetController_1.saveBankCharges);
+router.get('/summary', budgetController_1.getSummary);
+exports.default = router;
