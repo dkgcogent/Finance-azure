@@ -26,7 +26,8 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     const errorData = error.response?.data || {};
-    const message = errorData.message || errorData.error || `API request failed with status ${error.response?.status}`;
+    let rawMsg = errorData.message || errorData.error || `API request failed with status ${error.response?.status}`;
+    const message = typeof rawMsg === 'object' ? JSON.stringify(rawMsg) : String(rawMsg);
     return Promise.reject(new Error(message));
   }
 );

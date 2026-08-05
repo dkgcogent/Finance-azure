@@ -16,6 +16,14 @@ const PORT = process.env.PORT || 5000;
 
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => {
+  if (typeof req.body === 'string') {
+    try {
+      req.body = JSON.parse(req.body);
+    } catch (e) {}
+  }
+  next();
+});
 
 // Routes
 app.use('/api/auth', authRoutes);
@@ -28,6 +36,14 @@ app.use('/api/salaries', salaryRoutes);
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Finance Budgeting API is healthy' });
+});
+
+// Global Error Handler
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Unhandled API Error:', err);
+  const status = err.status || err.statusCode || 500;
+  const message = typeof err.message === 'string' ? err.message : (err?.error || 'Internal Server Error');
+  res.status(status).json({ message });
 });
 
 if (!process.env.VERCEL) {
