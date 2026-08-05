@@ -41,11 +41,8 @@ export const login = async (req: Request, res: Response) => {
     if (rows && rows.length > 0) {
       const user = rows[0];
       const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-    if (!isPasswordValid) {
-      return res.status(401).json({ message: 'Invalid email or password' });
-    }
-
-    const token = jwt.sign({ id: user.id, email: user.email, role: user.role }, JWT_SECRET, {
+      if (isPasswordValid) {
+        const token = jwt.sign({ id: user.id, email: user.email, role: user.role || 'admin' }, JWT_SECRET, {
           expiresIn: '24h',
         });
         return res.json({ token, user: { id: user.id, email: user.email, role: user.role || 'admin' } });
