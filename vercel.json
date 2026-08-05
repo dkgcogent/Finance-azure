@@ -1,0 +1,10 @@
+{
+  "buildCommand": "cd finance_frontend && npm run build",
+  "outputDirectory": "finance_frontend/dist",
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
