@@ -1,4 +1,5 @@
 {
+  "installCommand": "cd finance_frontend && npm install",
   "buildCommand": "cd finance_frontend && npm run build",
   "outputDirectory": "finance_frontend/dist",
   "rewrites": [
