@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@azure/storage-blob": "^12.33.0",
+    "@sparticuz/chromium": "^149.0.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
@@ -17,7 +18,8 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.2.0",
     "mysql2": "^3.11.0",
-    "puppeteer": "^25.4.0"
+    "puppeteer": "^25.4.0",
+    "puppeteer-core": "^25.5.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
