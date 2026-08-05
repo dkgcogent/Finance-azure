@@ -1,5 +1,4 @@
 import { db } from '../../../config/database';
-import puppeteer from 'puppeteer';
 import { BlobServiceClient } from '@azure/storage-blob';
 import dotenv from 'dotenv';
 dotenv.config();
@@ -68,6 +67,8 @@ export const invoiceService = {
     if (html) {
       try {
         // Generate PDF using Puppeteer
+        const puppeteerModule = await import('puppeteer');
+        const puppeteer = puppeteerModule.default || puppeteerModule;
         const browser = await puppeteer.launch({ headless: true });
         const page = await browser.newPage();
         await page.setContent(html, { waitUntil: 'load' });
