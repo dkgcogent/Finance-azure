@@ -291,9 +291,20 @@ export const saveVendorInvoice = async (req: Request, res: Response) => {
 
     if (html) {
       try {
-        const puppeteerModule = await import('puppeteer');
-        const puppeteer = puppeteerModule.default || puppeteerModule;
-        const browser = await puppeteer.launch({ headless: true });
+        let browser;
+        if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+          const chromium = (await import('@sparticuz/chromium')).default;
+          const puppeteerCore = (await import('puppeteer-core')).default;
+          browser = await puppeteerCore.launch({
+            args: chromium.args,
+            executablePath: await chromium.executablePath(),
+            headless: true,
+          });
+        } else {
+          const puppeteerModule = await import('puppeteer');
+          const puppeteer = puppeteerModule.default || puppeteerModule;
+          browser = await puppeteer.launch({ headless: true });
+        }
         const page = await browser.newPage();
         await page.setContent(html, { waitUntil: 'load' });
         await page.emulateMediaType('print');
@@ -411,9 +422,20 @@ export const saveVendorCNDN = async (req: Request, res: Response) => {
 
     if (html) {
       try {
-        const puppeteerModule = await import('puppeteer');
-        const puppeteer = puppeteerModule.default || puppeteerModule;
-        const browser = await puppeteer.launch({ headless: true });
+        let browser;
+        if (process.env.VERCEL || process.env.NODE_ENV === 'production') {
+          const chromium = (await import('@sparticuz/chromium')).default;
+          const puppeteerCore = (await import('puppeteer-core')).default;
+          browser = await puppeteerCore.launch({
+            args: chromium.args,
+            executablePath: await chromium.executablePath(),
+            headless: true,
+          });
+        } else {
+          const puppeteerModule = await import('puppeteer');
+          const puppeteer = puppeteerModule.default || puppeteerModule;
+          browser = await puppeteer.launch({ headless: true });
+        }
         const page = await browser.newPage();
         await page.setContent(html, { waitUntil: 'load' });
         await page.emulateMediaType('print');
