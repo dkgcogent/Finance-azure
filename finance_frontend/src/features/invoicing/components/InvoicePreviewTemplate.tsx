@@ -275,7 +275,7 @@ const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
   const description = `${tripTypeLabel} Transportation Charges ${projectName || ''} ${invoiceLocation || ''} for the Period Of ${period} (as per annexure attached)`;
 
   return (
-    <div className="border-2 border-black bg-white text-black text-xs p-6 font-serif mx-auto max-w-4xl shadow-lg">
+    <div className="border-2 border-black bg-white text-black text-xs p-4 font-serif mx-auto max-w-4xl shadow-lg">
       <CogentHeader />
 
       <div className="border-y-2 border-black text-center font-bold uppercase py-1">
@@ -346,7 +346,7 @@ const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
             {costCode && <td className="border-x-2 border-black p-1">{costCode}</td>}
             <td className="border-x-2 border-black p-1">{formatCurrency(totalFreight)}</td>
           </tr>
-          <tr className="h-24">
+          <tr className="h-8">
             <td className="border-x-2 border-black p-1"></td>
             <td className="border-x-2 border-black p-1"></td>
             <td className="border-x-2 border-black p-1"></td>
@@ -361,10 +361,10 @@ const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
           </tr>
         </tbody>
       </table>
-      <div className="h-12 border-x-2 border-b-2 border-black"></div>
+      <div className="h-6 border-x-2 border-b-2 border-black"></div>
 
       <BankDetails />
-      <div className="h-4 border-x-2 border-black"></div>
+      <div className="h-2 border-x-2 border-black"></div>
 
       {/* Totals */}
       <table className="w-full border-collapse border-2 border-black">
@@ -395,8 +395,8 @@ const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
             <td className="border-2 border-black p-1 text-right font-bold">{formatCurrency(grandTotal)}</td>
           </tr>
           <tr>
-            <td colSpan={3} className="border-x-2 border-b-2 border-black p-2 border-t-0 h-20 align-bottom pb-2 relative">
-              <span className="absolute bottom-14 left-0 right-0 text-center font-bold">For Cogent Logistics Private Limited</span>
+            <td colSpan={3} className="border-x-2 border-b-2 border-black p-2 border-t-0 h-16 align-bottom pb-2 relative">
+              <span className="absolute bottom-10 left-0 right-0 text-center font-bold">For Cogent Logistics Private Limited</span>
               <span className="absolute bottom-2 left-0 right-0 text-center text-xs">Authorised Signatory</span>
             </td>
           </tr>
