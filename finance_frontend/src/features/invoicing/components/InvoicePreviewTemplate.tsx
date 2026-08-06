@@ -10,7 +10,7 @@ export interface InvoicePreviewTemplateProps {
   startDate?: string;
   endDate?: string;
   invoiceDate?: string;
-  reportData?: { misData: any[]; annexureData: any[] } | null;
+  reportData?: { misData: any[]; annexureData: any[]; flipkartAnnexureData?: any[]; flipkartAdhocAnnexureData?: any[] } | null;
   // Additional metadata fields
   workOrderNo?: string;
   serviceProviderCode?: string;
