@@ -430,15 +430,15 @@ export const InvoicePreviewTemplate: React.FC<InvoicePreviewTemplateProps> = (pr
       const v = parseFloat(r.amount || r.totalAmount || 0);
       return sum + (isNaN(v) ? 0 : v);
     }, 0);
-    const fromMIS = (reportData.misData || []).reduce((sum: number, r: any) => {
-      const v = parseFloat(r.FreightFix || r.VFreightFix || r.totalFreight || r.amount || 0);
-      return sum + (isNaN(v) ? 0 : v);
-    }, 0);
     const fromAnnexure = (reportData.annexureData || []).reduce((sum: number, r: any) => {
       const v = parseFloat(r.totalAmount || r.amount || r.totalFixCost || 0);
       return sum + (isNaN(v) ? 0 : v);
     }, 0);
-    return fromFlipkart || fromFlipkartAdhoc || fromMIS || fromAnnexure || 0;
+    const fromMIS = (reportData.misData || []).reduce((sum: number, r: any) => {
+      const v = parseFloat(r.FreightFix || r.VFreightFix || r.totalFreight || r.amount || 0);
+      return sum + (isNaN(v) ? 0 : v);
+    }, 0);
+    return fromFlipkart || fromFlipkartAdhoc || fromAnnexure || fromMIS || 0;
   }, [reportData]);
 
   const totalTax = totalFreight * 0.18;

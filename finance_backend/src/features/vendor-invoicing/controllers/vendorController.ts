@@ -306,7 +306,7 @@ export const saveVendorInvoice = async (req: Request, res: Response) => {
           browser = await puppeteer.launch({ headless: true });
         }
         const page = await browser.newPage();
-        await page.setContent(html, { waitUntil: 'load' });
+        await page.setContent(html, { waitUntil: 'networkidle0' as any });
         await page.emulateMediaType('print');
         
         const pdfBuffer = await page.pdf({
@@ -437,7 +437,7 @@ export const saveVendorCNDN = async (req: Request, res: Response) => {
           browser = await puppeteer.launch({ headless: true });
         }
         const page = await browser.newPage();
-        await page.setContent(html, { waitUntil: 'load' });
+        await page.setContent(html, { waitUntil: 'networkidle0' as any });
         await page.emulateMediaType('print');
         
         const pdfBuffer = await page.pdf({

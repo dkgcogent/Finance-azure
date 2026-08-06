@@ -37,12 +37,12 @@ export default function CustomerInvoice() {
   const [invoiceProject, setInvoiceProject] = useState("")
   const [invoiceSubProject, setInvoiceSubProject] = useState("")
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0])
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
-  const [reportData, setReportData] = useState<{ misData: any[], annexureData: any[] } | null>(null)
+  const [reportData, setReportData] = useState<{ misData: any[], annexureData: any[], flipkartAnnexureData?: any[], flipkartAdhocAnnexureData?: any[] } | null>(null)
   // Metadata fields
   const [workOrderNo, setWorkOrderNo] = useState("")
+  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0])
   const [serviceProviderCode, setServiceProviderCode] = useState("")
   const [costCode, setCostCode] = useState("")
 
@@ -171,11 +171,27 @@ export default function CustomerInvoice() {
   }
 
   const handleAddInvoice = () => {
-    // Calculate total freight from report data
-    const totalFreight = (reportData?.misData || []).reduce((sum: number, r: any) => {
-      const v = parseFloat(r.FreightFix || r.TotalFreight || r.amount || 0);
-      return sum + (isNaN(v) ? 0 : v);
-    }, 0);
+    // Calculate total freight from report data using the same logic as the preview template
+    const totalFreight = (() => {
+      if (!reportData) return 0;
+      const fromFlipkart = (reportData.flipkartAnnexureData || []).reduce((sum: number, r: any) => {
+        const v = parseFloat(r.amount || r.totalAmount || 0);
+        return sum + (isNaN(v) ? 0 : v);
+      }, 0);
+      const fromFlipkartAdhoc = (reportData.flipkartAdhocAnnexureData || []).reduce((sum: number, r: any) => {
+        const v = parseFloat(r.amount || r.totalAmount || 0);
+        return sum + (isNaN(v) ? 0 : v);
+      }, 0);
+      const fromAnnexure = (reportData.annexureData || []).reduce((sum: number, r: any) => {
+        const v = parseFloat(r.totalAmount || r.amount || r.totalFixCost || 0);
+        return sum + (isNaN(v) ? 0 : v);
+      }, 0);
+      const fromMIS = (reportData.misData || []).reduce((sum: number, r: any) => {
+        const v = parseFloat(r.FreightFix || r.TotalFreight || r.amount || 0);
+        return sum + (isNaN(v) ? 0 : v);
+      }, 0);
+      return fromFlipkart || fromFlipkartAdhoc || fromAnnexure || fromMIS || 0;
+    })();
     const totalTax = totalFreight * 0.18;
     const grandTotal = totalFreight + totalTax;
 
@@ -188,6 +204,7 @@ export default function CustomerInvoice() {
       <html>
         <head>
           <title>Invoice</title>
+          <script src="https://cdn.tailwindcss.com"></script>
           ${stylesHtml}
           <style>
             body { background: white !important; margin: 0; padding: 20px; }
@@ -410,6 +427,7 @@ export default function CustomerInvoice() {
         <html>
           <head>
             <title>Invoice</title>
+            <script src="https://cdn.tailwindcss.com"></script>
             ${stylesHtml}
             <style>
               body { background: white !important; margin: 0; padding: 20px; }
