@@ -180,10 +180,9 @@ export const invoiceService = {
         LEFT JOIN project p ON p.ProjectID = ft.ProjectID
         WHERE ft.CustomerID = ? 
           AND ft.ProjectID = ? 
-          AND (ft.LocationID = ? OR ft.LocationID IS NULL)
           AND ft.TransactionDate BETWEEN ? AND ?
       `;
-      params = [customerId, projectId, locationId, startDate, endDate];
+      params = [customerId, projectId, startDate, endDate];
     } else {
       // Adhoc: match by CustomerID + date range only
       query = `
@@ -222,7 +221,10 @@ export const invoiceService = {
       params = [customerId, startDate, endDate];
     }
     
+    console.log('[generateReports] tripType:', tripType);
+    console.log('[generateReports] params:', params);
     const [misRows]: any = await db.query(query, params);
+    console.log('[generateReports] misRows count:', misRows.length);
 
     // Generate Annexure from MIS
     const annexureMap = new Map();
@@ -269,11 +271,21 @@ export const invoiceService = {
 
     const annexureData = Array.from(annexureMap.values());
 
+    // Detect if this customer is Flipkart by looking up their name from customer table
+    const [customerRows]: any = await db.query(
+      "SELECT COALESCE(MasterCustomerName, Name) as customerName FROM customer WHERE CustomerID = ? LIMIT 1",
+      [customerId]
+    );
+    const customerName = (customerRows[0]?.customerName || '').toLowerCase();
+    const isFlipkart = customerName.includes('flipkart') || customerName.includes('instakart') || customerName.includes('instra');
+
+    console.log('[generateReports] customerName:', customerName, '| isFlipkart:', isFlipkart);
+
     // Flipkart specific Annexure logic
     let flipkartAnnexureData: any[] = [];
     let flipkartAdhocAnnexureData: any[] = [];
     
-    if (misRows.length > 0 && misRows.some((r: any) => r.consignorName && r.consignorName.toLowerCase().includes('flipkart'))) {
+    if (misRows.length > 0) {
       if (tripType === 'Fixed') {
         const flipkartMap = new Map();
       const workingDaysInMonth = new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth() + 1, 0).getDate();
