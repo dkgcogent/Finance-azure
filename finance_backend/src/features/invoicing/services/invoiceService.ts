@@ -132,15 +132,19 @@ export const invoiceService = {
     };
   },
 
-  generateReports: async (filters: {
-    customerId: number;
-    projectId: number;
-    locationId: string;
-    tripType: string;
-    startDate: string;
-    endDate: string;
-  }) => {
+  generateReports: async (filters: any) => {
     const { customerId, projectId, locationId, tripType, startDate, endDate } = filters;
+
+    // Fetch the default customer GSTIN from the customer table as a fallback
+    let fallbackCustomerGSTIN = null;
+    try {
+      const [customerRows]: any = await db.query("SELECT GSTNo FROM customer WHERE CustomerID = ?", [customerId]);
+      if (customerRows.length > 0) {
+        fallbackCustomerGSTIN = customerRows[0].GSTNo;
+      }
+    } catch (e) {
+      console.error("Error fetching fallback customer GSTIN:", e);
+    }
     
     // Fetch MIS data
     let query = '';
@@ -179,11 +183,11 @@ export const invoiceService = {
         LEFT JOIN vehicle v ON v.VehicleID = JSON_UNQUOTE(JSON_EXTRACT(ft.VehicleIDs, '$[0]'))
         LEFT JOIN vendor vend ON vend.VendorID = ft.VendorID
         LEFT JOIN project p ON p.ProjectID = ft.ProjectID
-        WHERE ft.CustomerID = ? 
-          AND ft.ProjectID = ? 
+        WHERE (ft.CustomerID = ? OR ft.customer = (SELECT COALESCE(MasterCustomerName, Name) FROM customer WHERE CustomerID = ?))
+          AND (ft.ProjectID = ? OR ft.ProjectName = (SELECT ProjectName FROM project WHERE ProjectID = ?))
           AND ft.TransactionDate BETWEEN ? AND ?
       `;
-      params = [customerId, projectId, startDate, endDate];
+      params = [customerId, customerId, projectId, projectId, startDate, endDate];
     } else {
       // Adhoc: match by CustomerID + date range only
       query = `
@@ -424,7 +428,8 @@ export const invoiceService = {
       misData: misRows,
       annexureData,
       flipkartAnnexureData,
-      flipkartAdhocAnnexureData
+      flipkartAdhocAnnexureData,
+      fallbackCustomerGSTIN
     };
   },
 
