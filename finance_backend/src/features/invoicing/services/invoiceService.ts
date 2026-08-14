@@ -153,78 +153,93 @@ export const invoiceService = {
     if (tripType === 'Fixed') {
       query = `
         SELECT 
-          TransactionDate as date,
+          COALESCE(ft.ServiceDate, ft.TransactionDate) as date,
           p.ProjectName as consignorName,
-          COALESCE(vend.VendorName, 'Unknown') as vendor,
-          v.VehicleRegistrationNo as vehicle,
-          v.VehicleType as vehicleType,
-          TripType as vehicleOwnership,
+          COALESCE(vend.VendorName, ft.VendorName, 'Unknown') as vendor,
+          COALESCE(v.VehicleRegistrationNo, ft.VehicleNumber) as vehicle,
+          COALESCE(v.VehicleType, ft.VehicleType) as vehicleType,
+          ft.TripType as vehicleOwnership,
           COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub) as actualStart,
           COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub) as actualEnd,
           COALESCE(ft.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub), COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub)), 0) as transit,
           COALESCE(ft.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub), COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub)), 0) as total,
           0 as extra,
           COALESCE(ft.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub), COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub)), 0) as working,
-          OpeningKM as startKm,
-          ClosingKM as endKm,
-          (ClosingKM - OpeningKM) as distance,
-          FixKm as extraKm,
-          TransactionID as orderNumber,
-          TransactionID as tripLogNumber,
-          VFreightFix as FreightFix,
-          LoadingCharges,
-          UnloadingCharges,
-          ParkingCharges,
+          ft.OpeningKM as startKm,
+          ft.ClosingKM as endKm,
+          (ft.ClosingKM - ft.OpeningKM) as distance,
+          ft.FixKm as extraKm,
+          ft.TransactionID as orderNumber,
+          ft.TransactionID as tripLogNumber,
+          COALESCE(ft.VFreightFix, cc.fixed_rate, 0) as FreightFix,
+          COALESCE(ft.LoadingCharges, 0) as LoadingCharges,
+          COALESCE(ft.UnloadingCharges, 0) as UnloadingCharges,
+          COALESCE(ft.ParkingCharges, 0) as ParkingCharges,
           ft.GSTNo,
           ft.CompanyName,
           ft.Location as ourState,
-          ft.CustomerSite as ourBranch
+          ft.CustomerSite as ourBranch,
+          cc.fixed_rate as cc_fixed_rate,
+          cc.km_include_in_fix_rate as cc_km_include,
+          cc.additional_rate_per_km as cc_additional_rate_per_km,
+          cc.over_time_charges as cc_over_time_charges,
+          vc.fixed_rate as vc_fixed_rate
         FROM fixed_transactions ft
         LEFT JOIN vehicle v ON v.VehicleID = JSON_UNQUOTE(JSON_EXTRACT(ft.VehicleIDs, '$[0]'))
         LEFT JOIN vendor vend ON vend.VendorID = ft.VendorID
         LEFT JOIN project p ON p.ProjectID = ft.ProjectID
-        WHERE (ft.CustomerID = ? OR ft.customer = (SELECT COALESCE(MasterCustomerName, Name) FROM customer WHERE CustomerID = ?))
-          AND (ft.ProjectID = ? OR ft.ProjectName = (SELECT ProjectName FROM project WHERE ProjectID = ?))
-          AND ft.TransactionDate BETWEEN ? AND ?
+        LEFT JOIN customer_commercial cc ON ft.customer_commercial_id = cc.id
+        LEFT JOIN vendor_commercial vc ON ft.vendor_commercial_id = vc.id
+        WHERE (ft.CustomerID = ? OR ? IS NULL)
+          AND (ft.ProjectID = ? OR ? IS NULL)
+          AND COALESCE(ft.ServiceDate, ft.TransactionDate) BETWEEN ? AND ?
       `;
-      params = [customerId, customerId, projectId, projectId, startDate, endDate];
+      params = [customerId, customerId, projectId || null, projectId || null, startDate, endDate];
     } else {
-      // Adhoc: match by CustomerID + date range only
+      // Adhoc: match by CustomerID + ProjectID + date range
       query = `
         SELECT 
-          TransactionDate as date,
-          COALESCE(ProjectName, Location, CustomerSite) as consignorName,
-          VendorName as vendor,
-          VehicleNumber as vehicle,
-          VehicleType as vehicleType,
-          COALESCE(VehicleOwnershipType, TripType) as vehicleOwnership,
-          COALESCE(InTimeByCust, VehicleEntryInHub, VehicleReportingAtHub) as actualStart,
-          COALESCE(OutTimeFrom, OutTimeFromHub, VehicleReturnAtHub) as actualEnd,
-          COALESCE(TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(InTimeByCust, VehicleEntryInHub, VehicleReportingAtHub), COALESCE(OutTimeFrom, OutTimeFromHub, VehicleReturnAtHub)), 0) as transit,
-          COALESCE(TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(InTimeByCust, VehicleEntryInHub, VehicleReportingAtHub), COALESCE(OutTimeFrom, OutTimeFromHub, VehicleReturnAtHub)), 0) as total,
-          ExtraKM as extra,
-          COALESCE(TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(InTimeByCust, VehicleEntryInHub, VehicleReportingAtHub), COALESCE(OutTimeFrom, OutTimeFromHub, VehicleReturnAtHub)), 0) as working,
-          OpeningKM as startKm,
-          ClosingKM as endKm,
-          (ClosingKM - OpeningKM) as distance,
-          ExtraKM as extraKm,
-          TripNo as orderNumber,
-          TripNo as tripLogNumber,
-          TotalFreight as FreightFix,
-          LoadingCharges,
-          UnloadingCharges,
-          ParkingCharges,
-          ExtraKMCost,
-          DCMCharges,
-          GSTNo,
-          CompanyName,
-          Location as ourState,
-          COALESCE(CustSite, CustomerSite) as ourBranch
-        FROM adhoc_transactions
-        WHERE CustomerID = ?
-          AND TransactionDate BETWEEN ? AND ?
+          COALESCE(at.ServiceDate, at.TransactionDate) as date,
+          COALESCE(p.ProjectName, at.ProjectName, at.Location, at.CustomerSite) as consignorName,
+          COALESCE(vend.VendorName, at.VendorName) as vendor,
+          at.VehicleNumber as vehicle,
+          at.VehicleType as vehicleType,
+          COALESCE(at.VehicleOwnershipType, at.TripType) as vehicleOwnership,
+          COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub) as actualStart,
+          COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub) as actualEnd,
+          COALESCE(at.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub), COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub)), 0) as transit,
+          COALESCE(at.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub), COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub)), 0) as total,
+          at.ExtraKM as extra,
+          COALESCE(at.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub), COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub)), 0) as working,
+          at.OpeningKM as startKm,
+          at.ClosingKM as endKm,
+          (at.ClosingKM - at.OpeningKM) as distance,
+          at.ExtraKM as extraKm,
+          at.TripNo as orderNumber,
+          at.TripNo as tripLogNumber,
+          COALESCE(at.TotalFreight, cc.fixed_rate, 0) as FreightFix,
+          COALESCE(at.LoadingCharges, 0) as LoadingCharges,
+          COALESCE(at.UnloadingCharges, 0) as UnloadingCharges,
+          COALESCE(at.ParkingCharges, 0) as ParkingCharges,
+          at.ExtraKMCost,
+          at.DCMCharges,
+          at.GSTNo,
+          at.CompanyName,
+          at.Location as ourState,
+          COALESCE(at.CustSite, at.CustomerSite) as ourBranch,
+          cc.fixed_rate as cc_fixed_rate,
+          cc.additional_rate_per_km as cc_additional_rate_per_km,
+          vc.fixed_rate as vc_fixed_rate
+        FROM adhoc_transactions at
+        LEFT JOIN project p ON p.ProjectID = at.ProjectID
+        LEFT JOIN vendor vend ON vend.VendorID = at.VendorID
+        LEFT JOIN customer_commercial cc ON at.customer_commercial_id = cc.id
+        LEFT JOIN vendor_commercial vc ON at.vendor_commercial_id = vc.id
+        WHERE (at.CustomerID = ? OR ? IS NULL)
+          AND (at.ProjectID = ? OR ? IS NULL)
+          AND COALESCE(at.ServiceDate, at.TransactionDate) BETWEEN ? AND ?
       `;
-      params = [customerId, startDate, endDate];
+      params = [customerId, customerId, projectId || null, projectId || null, startDate, endDate];
     }
     
     console.log('[generateReports] tripType:', tripType);
@@ -296,21 +311,22 @@ export const invoiceService = {
         const flipkartMap = new Map();
       const workingDaysInMonth = new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth() + 1, 0).getDate();
       
-      // Fetch commercial for Flipkart Fixed
+      // Fetch commercial for exact customer and project
       const [commercialRows]: any = await db.query(
-        "SELECT * FROM customer_commercial WHERE (project LIKE '%Flipkart%' OR master_customer LIKE '%Flipkart%' OR company_name LIKE '%Flipkart%') AND type_of_vehicle_placement = 'Fixed'"
+        "SELECT * FROM customer_commercial WHERE (customer_id = ? OR ? IS NULL) AND type_of_vehicle_placement = 'Fixed'",
+        [customerId, customerId]
       );
       
       misRows.forEach((row: any) => {
         const veh = row.vehicle || 'Unknown Vehicle';
         
-        // Find specific commercial for this vehicle type, or fallback to first
+        // Find specific commercial for this vehicle type, or fallback to row's joined cc values, or first match
         const comm = commercialRows.find((c: any) => c.type_of_vehicle === row.vehicleType) || commercialRows[0] || {};
         
-        const extraKmRate = Number(comm.additional_rate_per_km || 7);
-        const extraHourRate = Number(comm.over_time_charges || 60);
-        const fixedKms = Number(comm.km_include_in_fix_rate || 5500);
-        const fixedRate = Number(comm.fixed_rate || 64500);
+        const extraKmRate = Number(row.cc_additional_rate_per_km || comm.additional_rate_per_km || 7);
+        const extraHourRate = Number(row.cc_over_time_charges || comm.over_time_charges || 60);
+        const fixedKms = Number(row.cc_km_include || comm.km_include_in_fix_rate || 5500);
+        const fixedRate = Number(row.cc_fixed_rate || comm.fixed_rate || 64500);
         const dieselHike = 0; 
         const totalChargesWithDieselHike = fixedRate + dieselHike;
         const vehicleTypeStr = comm.type_of_vehicle || row.vehicleType || 'Tata Ace';
@@ -385,13 +401,14 @@ export const invoiceService = {
         const adhocMap = new Map();
         
         const [commercialRows]: any = await db.query(
-          "SELECT * FROM customer_commercial WHERE (project LIKE '%Flipkart%' OR master_customer LIKE '%Flipkart%' OR company_name LIKE '%Flipkart%') AND type_of_vehicle_placement = 'Adhoc'"
+          "SELECT * FROM customer_commercial WHERE (customer_id = ? OR ? IS NULL) AND type_of_vehicle_placement = 'Adhoc'",
+          [customerId, customerId]
         );
         
         misRows.forEach((row: any) => {
           const comm = commercialRows.find((c: any) => c.type_of_vehicle === row.vehicleType) || commercialRows[0] || {};
-          const extraKmRate = Number(comm.additional_rate_per_km || 7);
-          const fixRate = Number(comm.fixed_rate || 2200);
+          const extraKmRate = Number(row.cc_additional_rate_per_km || comm.additional_rate_per_km || 7);
+          const fixRate = Number(row.cc_fixed_rate || comm.fixed_rate || 2200);
 
           const loc = row.ourBranch || row.ourState || row.consignorName || 'Unknown';
           if (!adhocMap.has(loc)) {
