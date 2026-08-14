@@ -21,7 +21,7 @@ export const fetchLocations = async () => {
 export const generateInvoiceReports = async (filters: {
   customerId: number;
   projectId: number;
-  locationId: number;
+  locationId: string;
   tripType: string;
   startDate: string;
   endDate: string;

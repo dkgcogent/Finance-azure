@@ -960,7 +960,7 @@ export default function CustomerInvoice() {
                       reportMutation.mutate({
                         customerId: Number(invoiceCustomer),
                         projectId: Number(invoiceProject),
-                        locationId: Number(invoiceLocation),
+                        locationId: invoiceLocation,
                         tripType: invoiceType,
                         startDate,
                         endDate
