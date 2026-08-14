@@ -153,6 +153,7 @@ export const invoiceService = {
           p.ProjectName as consignorName,
           COALESCE(vend.VendorName, 'Unknown') as vendor,
           v.VehicleRegistrationNo as vehicle,
+          v.VehicleType as vehicleType,
           TripType as vehicleOwnership,
           COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub) as actualStart,
           COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub) as actualEnd,
@@ -191,6 +192,7 @@ export const invoiceService = {
           COALESCE(ProjectName, Location, CustomerSite) as consignorName,
           VendorName as vendor,
           VehicleNumber as vehicle,
+          VehicleType as vehicleType,
           COALESCE(VehicleOwnershipType, TripType) as vehicleOwnership,
           COALESCE(InTimeByCust, VehicleEntryInHub, VehicleReportingAtHub) as actualStart,
           COALESCE(OutTimeFrom, OutTimeFromHub, VehicleReturnAtHub) as actualEnd,
@@ -290,30 +292,32 @@ export const invoiceService = {
         const flipkartMap = new Map();
       const workingDaysInMonth = new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth() + 1, 0).getDate();
       
-      // Fetch commercial for Flipkart
+      // Fetch commercial for Flipkart Fixed
       const [commercialRows]: any = await db.query(
-        "SELECT * FROM customer_commercial WHERE project LIKE '%Flipkart%' AND state = ? LIMIT 1",
-        [misRows[0].ourState || 'Uttar Pradesh'] // Fallback to UP
+        "SELECT * FROM customer_commercial WHERE (project LIKE '%Flipkart%' OR master_customer LIKE '%Flipkart%' OR company_name LIKE '%Flipkart%') AND type_of_vehicle_placement = 'Fixed'"
       );
-      
-      const comm = commercialRows[0] || {};
-      const extraKmRate = Number(comm.additional_rate_per_km || 7);
-      const extraHourRate = Number(comm.over_time_charges || 60);
-      const fixedKms = Number(comm.km_include_in_fix_rate || 5500);
-      const fixedRate = Number(comm.fixed_rate || 64500);
-      const dieselHike = 0; 
-      const totalChargesWithDieselHike = fixedRate + dieselHike;
-      const vehicleType = comm.type_of_vehicle || 'Tata Ace';
-      const mode = comm.type_of_vehicle_placement || 'UP Large';
-      const vertical = comm.description_only_sbs || 'LM'; // dynamically mapped or fallback LM
       
       misRows.forEach((row: any) => {
         const veh = row.vehicle || 'Unknown Vehicle';
+        
+        // Find specific commercial for this vehicle type, or fallback to first
+        const comm = commercialRows.find((c: any) => c.type_of_vehicle === row.vehicleType) || commercialRows[0] || {};
+        
+        const extraKmRate = Number(comm.additional_rate_per_km || 7);
+        const extraHourRate = Number(comm.over_time_charges || 60);
+        const fixedKms = Number(comm.km_include_in_fix_rate || 5500);
+        const fixedRate = Number(comm.fixed_rate || 64500);
+        const dieselHike = 0; 
+        const totalChargesWithDieselHike = fixedRate + dieselHike;
+        const vehicleTypeStr = comm.type_of_vehicle || row.vehicleType || 'Tata Ace';
+        const mode = comm.type_of_vehicle_placement || 'UP Large';
+        const vertical = comm.description_only_sbs || 'LM'; // dynamically mapped or fallback LM
+        
         if (!flipkartMap.has(veh)) {
           flipkartMap.set(veh, {
             sNo: flipkartMap.size + 1,
             vehicleNo: veh,
-            typeOfVehicle: vehicleType,
+            typeOfVehicle: vehicleTypeStr,
             mode: mode,
             location: row.ourBranch || row.ourState || row.consignorName,
             vertical: vertical,
@@ -327,6 +331,7 @@ export const invoiceService = {
             totalKMs: 0,
             extraHour: 0,
             extraHourCharges: 0,
+            extraHourRate: extraHourRate,
             extraKmRate: extraKmRate,
             extraKm: 0,
             extraKmCharge: 0,
@@ -356,7 +361,7 @@ export const invoiceService = {
         
         summary.extraKm = Math.max(summary.totalKMs - summary.fixedKms, 0);
         summary.extraKmCharge = summary.extraKm * summary.extraKmRate;
-        summary.extraHourCharges = summary.extraHour * extraHourRate;
+        summary.extraHourCharges = summary.extraHour * summary.extraHourRate;
         
         // Formula: Total Amount = Extra Km Charge + Total Charges with Diesel Hike
         summary.totalAmount = summary.extraKmCharge + summary.totalChargesWithDieselHike;
@@ -376,14 +381,14 @@ export const invoiceService = {
         const adhocMap = new Map();
         
         const [commercialRows]: any = await db.query(
-          "SELECT * FROM customer_commercial WHERE project LIKE '%Flipkart%' AND state = ? LIMIT 1",
-          [misRows[0].ourState || 'Uttar Pradesh'] 
+          "SELECT * FROM customer_commercial WHERE (project LIKE '%Flipkart%' OR master_customer LIKE '%Flipkart%' OR company_name LIKE '%Flipkart%') AND type_of_vehicle_placement = 'Adhoc'"
         );
-        const comm = commercialRows[0] || {};
-        const extraKmRate = Number(comm.additional_rate_per_km || 7);
-        const fixRate = Number(comm.fixed_rate || 2200);
         
         misRows.forEach((row: any) => {
+          const comm = commercialRows.find((c: any) => c.type_of_vehicle === row.vehicleType) || commercialRows[0] || {};
+          const extraKmRate = Number(comm.additional_rate_per_km || 7);
+          const fixRate = Number(comm.fixed_rate || 2200);
+
           const loc = row.ourBranch || row.ourState || row.consignorName || 'Unknown';
           if (!adhocMap.has(loc)) {
             adhocMap.set(loc, {
