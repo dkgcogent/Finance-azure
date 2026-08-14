@@ -109,13 +109,17 @@ const BankDetails = () => (
 const RelianceInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: number; totalTax: number; grandTotal: number }> = ({
   customerName, projectName, invoiceLocation, invoiceType, startDate, endDate, invoiceDate,
   workOrderNo, serviceProviderCode, totalFreight, totalTax, grandTotal,
-  ourGSTIN, ourPAN, ourState, ourCompanyName
+  ourGSTIN, ourPAN, ourState, ourCompanyName, reportData
 }) => {
   const isInterState = invoiceLocation?.toLowerCase().includes('uttar') || invoiceLocation?.toLowerCase().includes('up');
   const igst = isInterState ? totalTax : 0;
   const cgst = !isInterState ? totalTax / 2 : 0;
   const sgst = !isInterState ? totalTax / 2 : 0;
   const period = (startDate && endDate) ? `${formatDate(startDate)} to ${formatDate(endDate)}` : '25-Apr-2025 to 24-May-2025';
+
+  const dbGSTNo = reportData?.misData?.find(row => row.GSTNo)?.GSTNo || reportData?.fallbackCustomerGSTIN;
+  const customerGSTIN = dbGSTNo || '09AAACF5232A1Z7';
+  const customerPAN = customerGSTIN.length >= 15 ? customerGSTIN.substring(2, 12) : 'AAACF5232A';
 
   return (
     <div className="border-2 border-black bg-white text-black text-xs p-6 font-serif mx-auto max-w-4xl shadow-lg">
@@ -141,7 +145,7 @@ const RelianceInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
               <span className="font-bold">(Formerly - Fine Tech Corporation Pvt Ltd)</span><br />
               <span className="font-bold">Address: Plot No TC 58V &amp; 59V, Eldeco Corporate Chamber 2,</span><br />
               <span className="font-bold">Phase I, Vibhut Gomti Nagar, LUCKNOW - 226010, Uttar Pradesh</span><br />
-              <span className="font-bold">GSTIN: 09AAACF5232A1Z7 &nbsp;|&nbsp; PAN: AAACF5232A</span>
+              <span className="font-bold">GSTIN: {customerGSTIN} &nbsp;|&nbsp; PAN: {customerPAN}</span>
             </td>
             <td className="border-2 border-black p-2 align-top w-1/2 font-bold">
               Tax Invoice No.: CLPL/25-26/—<br />
@@ -245,7 +249,7 @@ const RelianceInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
 const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: number; totalTax: number; grandTotal: number }> = ({
   projectName, invoiceLocation, invoiceType, startDate, endDate, invoiceDate,
   costCode, totalFreight, totalTax, grandTotal,
-  ourGSTIN, ourPAN, ourState, ourCompanyName
+  ourGSTIN, ourPAN, ourState, ourCompanyName, reportData
 }) => {
   // Determine GST split based on state
   const isInterState = invoiceLocation?.toLowerCase().includes('uttar') || invoiceLocation?.toLowerCase().includes('up');
@@ -267,9 +271,11 @@ const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
     <>M/s Instrakart Services Pvt Ltd,<br />PLOT NO 36/3 AND 37 BAMNOLI VILLAGE,<br />DELHI, WEST DELHI, DELHI - 110077</>
   );
 
-  const customerGSTIN = isUP ? '09AADCI8374D1ZI'
+  // Get GSTNo from DB if available (either from transaction or customer table)
+  const dbGSTNo = reportData?.misData?.find(row => row.GSTNo)?.GSTNo || reportData?.fallbackCustomerGSTIN;
+  const customerGSTIN = dbGSTNo || (isUP ? '09AADCI8374D1ZI'
     : invoiceLocation?.toLowerCase().includes('hary') ? '06AADCI8374D1Z'
-      : '07AADCI8374D2Z';
+      : '07AADCI8374D2Z');
 
   const tripTypeLabel = invoiceType === 'Fixed' ? 'Fix' : 'Adhoc';
   const description = `${tripTypeLabel} Transportation Charges ${projectName || ''} ${invoiceLocation || ''} for the Period Of ${period} (as per annexure attached)`;
@@ -448,10 +454,13 @@ export const InvoicePreviewTemplate: React.FC<InvoicePreviewTemplateProps> = (pr
 
   const firstMisRow = reportData?.misData?.[0] || {};
   const dynamicProps = {
-    ourGSTIN: firstMisRow.GSTNo || undefined,
-    ourPAN: firstMisRow.GSTNo && firstMisRow.GSTNo.length >= 12 ? firstMisRow.GSTNo.substring(2, 12) : undefined,
-    ourState: firstMisRow.ourState || undefined,
-    ourCompanyName: firstMisRow.CompanyName || undefined,
+    // ft.GSTNo and ft.CompanyName from the DB are actually the Customer's GSTIN and Company Name,
+    // not "our" (Cogent's) GSTIN and Company Name. We should leave these as undefined to trigger
+    // the default fallback values inside the templates (which are Cogent's details).
+    ourGSTIN: undefined,
+    ourPAN: undefined,
+    ourState: undefined,
+    ourCompanyName: undefined,
   };
 
   if (!customerName && !customerCode) return <NoSelectionFallback />;
