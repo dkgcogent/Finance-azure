@@ -39,7 +39,7 @@ export default function CustomerInvoice() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
-  const [reportData, setReportData] = useState<{ misData: any[], annexureData: any[], flipkartAnnexureData?: any[], flipkartAdhocAnnexureData?: any[] } | null>(null)
+  const [reportData, setReportData] = useState<{ misData: any[], annexureData: any[], flipkartAnnexureData?: any[], flipkartAdhocAnnexureData?: any[], fallbackCustomerGSTIN?: string, fallbackCustomerAddress?: string } | null>(null)
   // Metadata fields
   const [workOrderNo, setWorkOrderNo] = useState("")
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0])
@@ -344,12 +344,12 @@ export default function CustomerInvoice() {
     if (type === "mis") {
       dataToExport = reportData?.misData || [];
       keys = ["date", "consignorName", "vendor", "vehicle", "vehicleOwnership", "actualStart", "actualEnd", "transit", "total", "extra", "working", "startKm", "endKm", "distance", "extraKm", "orderNumber", "tripLogNumber"];
-      labels = ["Date", "Consignor Name", "Vendor", "Vehicle", "Vehicle Ownership", "Actual Start", "Actual End", "Transit", "Total", "Extra", "Working", "Start Km", "End Km", "Distance", "Extra Km", "Order Number", "Trip Log Number"];
+      labels = ["Date", "Consignor Name", "Vendor", "Vehicle No.", "Vehicle Ownership", "Actual Start", "Actual End", "Transit", "Total", "Extra Hrs", "Working Hours", "Start Odometer", "End Odometer", "Distance", "Extra Km", "Order Number", "Trip Log Number"];
     } else if (type === "annexure") {
       if (reportData?.flipkartAnnexureData && reportData.flipkartAnnexureData.length > 0) {
         dataToExport = reportData.flipkartAnnexureData;
-        keys = ["sNo", "vehicleNo", "typeOfVehicle", "mode", "location", "vertical", "noOfHours", "fixedKms", "agreementRate", "dieselHike", "totalChargesWithDieselHike", "workingDaysToBeDone", "daysActualDone", "totalKMs", "extraHour", "extraHourCharges", "extraKmRate", "extraKm", "extraKmCharge", "totalAmount", "perDayCost", "tWorkingDaysAmount", "tollCharges", "amount"];
-        labels = ["S. No.", "Vehicle No", "Type of Vehicle", "Mode", "Location", "Vertical", "No. of hours", "Fixed Kms", "Agreement Rate", "Diesel Hike", "Total Charges with Diesel Hike", "Nos. Of Working days to be done", "Nos. of days actual done", "Total KMs", "Extra Hour", "Extra Hour Charges", "Extra KM rate", "Extra Km", "Extra Km Charge", "Total Amount", "Per Day Cost", "T. Working days Amount", "Toll charges", "Amount"];
+        keys = ["sNo", "vehicleNo", "typeOfVehicle", "mode", "location", "vertical", "noOfHours", "fixedKms", "agreementRate", "dieselHike", "totalChargesWithDieselHike", "workingDaysToBeDone", "daysActualDone", "totalKMs", "extraHourRate", "extraHour", "extraHourCharges", "extraKmRate", "extraKm", "extraKmCharge", "totalAmount", "perDayCost", "tWorkingDaysAmount", "tollCharges", "amount"];
+        labels = ["S. No.", "Vehicle No", "Type of Vehicle", "Mode", "Location", "Vertical", "No. of hours", "Fixed Kms", "Agreement Rate", "Diesel Hike", "Total Charges with Diesel Hike", "Nos. Of Working days to be done", "Nos. of days actual done", "Total KMs", "Extra Hour Amount", "Extra Hour", "Extra Hour Charges", "Extra KM rate", "Extra Km", "Extra Km Charge", "Total Amount", "Per Day Cost", "T. Working days Amount", "Toll charges", "Amount"];
       } else if (reportData?.flipkartAdhocAnnexureData && reportData.flipkartAdhocAnnexureData.length > 0) {
         dataToExport = reportData.flipkartAdhocAnnexureData;
         keys = ["sNo", "location", "noOfTrips", "fixRate", "extraKm", "extraKmRate", "totalFixCost", "extraKmCharge", "handlingCharges", "amount"];
@@ -654,6 +654,10 @@ export default function CustomerInvoice() {
                   <label className="text-sm font-medium">Invoice Date</label>
                   <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
                 </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Cost Code</label>
+                  <Input placeholder="e.g. 4462" value={costCode} onChange={e => setCostCode(e.target.value)} />
+                </div>
 
                 {/* Ecosystem-specific metadata fields */}
                 {ecosystem === 'reliance' && (
@@ -667,12 +671,6 @@ export default function CustomerInvoice() {
                       <Input placeholder="e.g. 10145861" value={serviceProviderCode} onChange={e => setServiceProviderCode(e.target.value)} />
                     </div>
                   </>
-                )}
-                {ecosystem === 'flipkart' && invoiceType === 'Adhoc' && (
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Cost Code <span className="text-xs text-muted-foreground">(Flipkart Adhoc)</span></label>
-                    <Input placeholder="e.g. 4462" value={costCode} onChange={e => setCostCode(e.target.value)} />
-                  </div>
                 )}
               </div>
             )}
@@ -697,16 +695,16 @@ export default function CustomerInvoice() {
                         <th className="p-2 border border-black font-bold">Date</th>
                         <th className="p-2 border border-black font-bold">Consignor Name</th>
                         <th className="p-2 border border-black font-bold">Vendor</th>
-                        <th className="p-2 border border-black font-bold">Vehicle</th>
+                        <th className="p-2 border border-black font-bold">Vehicle No.</th>
                         <th className="p-2 border border-black font-bold">Vehicle Ownership</th>
                         <th className="p-2 border border-black font-bold">Actual Start</th>
                         <th className="p-2 border border-black font-bold">Actual End</th>
                         <th className="p-2 border border-black font-bold">Transit</th>
                         <th className="p-2 border border-black font-bold">Total</th>
-                        <th className="p-2 border border-black font-bold">Extra</th>
-                        <th className="p-2 border border-black font-bold">Working</th>
-                        <th className="p-2 border border-black font-bold">Start Km</th>
-                        <th className="p-2 border border-black font-bold">End Km</th>
+                        <th className="p-2 border border-black font-bold">Extra Hrs</th>
+                        <th className="p-2 border border-black font-bold">Working Hours</th>
+                        <th className="p-2 border border-black font-bold">Start Odometer</th>
+                        <th className="p-2 border border-black font-bold">End Odometer</th>
                         <th className="p-2 border border-black font-bold">Distance</th>
                         <th className="p-2 border border-black font-bold">Extra Km</th>
                         <th className="p-2 border border-black font-bold">Order Number</th>
@@ -778,6 +776,7 @@ export default function CustomerInvoice() {
                           <th className="p-2 border border-black font-bold">Nos. Of Working days to be done</th>
                           <th className="p-2 border border-black font-bold">Nos. of days actual done</th>
                           <th className="p-2 border border-black font-bold">Total KMs</th>
+                          <th className="p-2 border border-black font-bold">Extra Hour Amount</th>
                           <th className="p-2 border border-black font-bold">Extra Hour</th>
                           <th className="p-2 border border-black font-bold">Extra Hour Charges</th>
                           <th className="p-2 border border-black font-bold">Extra KM rate</th>
@@ -807,6 +806,7 @@ export default function CustomerInvoice() {
                             <td className="p-2 border border-black bg-white">{row.workingDaysToBeDone}</td>
                             <td className="p-2 border border-black bg-white">{row.daysActualDone}</td>
                             <td className="p-2 border border-black bg-white">{row.totalKMs}</td>
+                            <td className="p-2 border border-black bg-white">{row.extraHourRate}</td>
                             <td className="p-2 border border-black bg-white">{row.extraHour}</td>
                             <td className="p-2 border border-black bg-white">{row.extraHourCharges}</td>
                             <td className="p-2 border border-black bg-white">{row.extraKmRate}</td>
@@ -820,7 +820,7 @@ export default function CustomerInvoice() {
                           </tr>
                         ))}
                         <tr>
-                          <td colSpan={23} className="p-2 border border-black bg-[#e2efd9] font-bold text-right pr-4">Grand Total</td>
+                          <td colSpan={24} className="p-2 border border-black bg-[#e2efd9] font-bold text-right pr-4">Grand Total</td>
                           <td className="p-2 border border-black bg-[#e2efd9] font-bold">{reportData.flipkartAnnexureData.reduce((acc: number, r: any) => acc + (parseFloat(r.amount || 0)), 0)}</td>
                         </tr>
                       </tbody>

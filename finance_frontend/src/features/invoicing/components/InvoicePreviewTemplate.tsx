@@ -10,7 +10,7 @@ export interface InvoicePreviewTemplateProps {
   startDate?: string;
   endDate?: string;
   invoiceDate?: string;
-  reportData?: { misData: any[]; annexureData: any[]; flipkartAnnexureData?: any[]; flipkartAdhocAnnexureData?: any[] } | null;
+  reportData?: { misData: any[]; annexureData: any[]; flipkartAnnexureData?: any[]; flipkartAdhocAnnexureData?: any[]; fallbackCustomerGSTIN?: string; fallbackCustomerAddress?: string } | null;
   // Additional metadata fields
   workOrderNo?: string;
   serviceProviderCode?: string;
@@ -273,12 +273,11 @@ const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
 
   // Get GSTNo from DB if available (either from transaction or customer table)
   const dbGSTNo = reportData?.misData?.find(row => row.GSTNo)?.GSTNo || reportData?.fallbackCustomerGSTIN;
-  const customerGSTIN = dbGSTNo || (isUP ? '09AADCI8374D1ZI'
-    : invoiceLocation?.toLowerCase().includes('hary') ? '06AADCI8374D1Z'
-      : '07AADCI8374D2Z');
+  const customerGSTIN = dbGSTNo || '—';
 
   const tripTypeLabel = invoiceType === 'Fixed' ? 'Fix' : 'Adhoc';
-  const description = `${tripTypeLabel} Transportation Charges ${projectName || ''} ${invoiceLocation || ''} for the Period Of ${period} (as per annexure attached)`;
+  const cleanLocation = invoiceLocation ? invoiceLocation.split('-')[0].trim() : '';
+  const description = `${tripTypeLabel} Transportation Charges ${projectName || ''} ${cleanLocation} for the Period Of ${period} (as per annexure attached)`;
 
   return (
     <div className="border-2 border-black bg-white text-black text-xs p-4 font-serif mx-auto max-w-4xl shadow-lg">
