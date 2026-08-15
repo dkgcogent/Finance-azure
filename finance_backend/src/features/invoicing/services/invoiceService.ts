@@ -35,17 +35,17 @@ export const invoiceService = {
   },
 
   getCustomers: async () => {
-    const [rows] = await db.query("SELECT CustomerID as id, CONCAT(COALESCE(MasterCustomerName, Name), ' (', COALESCE(CustomerCode, ''), ')') as name FROM customer");
+    const [rows] = await db.query("SELECT CustomerID as id, COALESCE(MasterCustomerName, Name) as name, GSTNo as gstNo, COALESCE(CustomerRegisteredOfficeAddress, CustomerCorporateOfficeAddress) as address FROM customer");
     return rows;
   },
 
   getProjects: async () => {
-    const [rows] = await db.query("SELECT ProjectID as id, CONCAT(ProjectName, CASE WHEN Location IS NOT NULL AND Location != '' THEN CONCAT(' (', Location, ')') ELSE '' END) as name, CustomerID as customerId FROM project");
+    const [rows] = await db.query("SELECT ProjectID as id, ProjectName as name, CustomerID as customerId FROM project");
     return rows;
   },
 
   getLocations: async () => {
-    const [rows] = await db.query("SELECT DISTINCT Location as id, Location as name, CustomerID as customerId FROM project WHERE Location IS NOT NULL AND Location != ''");
+    const [rows] = await db.query("SELECT DISTINCT Location as id, TRIM(SUBSTRING_INDEX(Location, '-', 1)) as name, CustomerID as customerId FROM project WHERE Location IS NOT NULL AND Location != ''");
     return rows;
   },
 
@@ -73,8 +73,9 @@ export const invoiceService = {
           const puppeteerCore = (await import('puppeteer-core')).default;
           browser = await puppeteerCore.launch({
             args: chromium.args,
+            defaultViewport: (chromium as any).defaultViewport,
             executablePath: await chromium.executablePath(),
-            headless: true,
+            headless: (chromium as any).headless ?? true,
           });
         } else {
           const puppeteerModule = await import('puppeteer');
@@ -137,10 +138,12 @@ export const invoiceService = {
 
     // Fetch the default customer GSTIN from the customer table as a fallback
     let fallbackCustomerGSTIN = null;
+    let fallbackCustomerAddress = null;
     try {
-      const [customerRows]: any = await db.query("SELECT GSTNo FROM customer WHERE CustomerID = ?", [customerId]);
+      const [customerRows]: any = await db.query("SELECT GSTNo, COALESCE(CustomerRegisteredOfficeAddress, CustomerCorporateOfficeAddress) as address FROM customer WHERE CustomerID = ?", [customerId]);
       if (customerRows.length > 0) {
         fallbackCustomerGSTIN = customerRows[0].GSTNo;
+        fallbackCustomerAddress = customerRows[0].address;
       }
     } catch (e) {
       console.error("Error fetching fallback customer GSTIN:", e);
@@ -154,13 +157,22 @@ export const invoiceService = {
       query = `
         SELECT 
           COALESCE(ft.ServiceDate, ft.TransactionDate) as date,
-          p.ProjectName as consignorName,
-          COALESCE(vend.VendorName, ft.VendorName, 'Unknown') as vendor,
+          COALESCE(ft.CustomerSite, ft.Location, p.ProjectName) as consignorName,
+          p.ProjectName as projectName,
+          'COGENT LOGISTICS' as vendor,
           COALESCE(v.VehicleRegistrationNo, ft.VehicleNumber) as vehicle,
           COALESCE(v.VehicleType, ft.VehicleType) as vehicleType,
           ft.TripType as vehicleOwnership,
-          COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub) as actualStart,
-          COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub) as actualEnd,
+          CASE 
+            WHEN COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub) IS NOT NULL 
+            THEN CONCAT(DATE_FORMAT(COALESCE(ft.ServiceDate, ft.TransactionDate), '%d/%m/%Y'), ' ', COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub))
+            ELSE NULL 
+          END as actualStart,
+          CASE 
+            WHEN COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub) IS NOT NULL 
+            THEN CONCAT(DATE_FORMAT(COALESCE(ft.ServiceDate, ft.TransactionDate), '%d/%m/%Y'), ' ', COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub))
+            ELSE NULL 
+          END as actualEnd,
           COALESCE(ft.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub), COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub)), 0) as transit,
           COALESCE(ft.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub), COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub)), 0) as total,
           0 as extra,
@@ -175,6 +187,7 @@ export const invoiceService = {
           COALESCE(ft.LoadingCharges, 0) as LoadingCharges,
           COALESCE(ft.UnloadingCharges, 0) as UnloadingCharges,
           COALESCE(ft.ParkingCharges, 0) as ParkingCharges,
+          COALESCE(ft.TollExpenses, 0) as TollExpenses,
           ft.GSTNo,
           ft.CompanyName,
           ft.Location as ourState,
@@ -183,6 +196,11 @@ export const invoiceService = {
           cc.km_include_in_fix_rate as cc_km_include,
           cc.additional_rate_per_km as cc_additional_rate_per_km,
           cc.over_time_charges as cc_over_time_charges,
+          cc.no_of_days_per_month as cc_no_of_days_per_month,
+          cc.hours as cc_hours,
+          cc.description_only_sbs as cc_vertical,
+          cc.toll as cc_toll,
+          cc.parking as cc_parking,
           vc.fixed_rate as vc_fixed_rate
         FROM fixed_transactions ft
         LEFT JOIN vehicle v ON v.VehicleID = JSON_UNQUOTE(JSON_EXTRACT(ft.VehicleIDs, '$[0]'))
@@ -200,13 +218,22 @@ export const invoiceService = {
       query = `
         SELECT 
           COALESCE(at.ServiceDate, at.TransactionDate) as date,
-          COALESCE(p.ProjectName, at.ProjectName, at.Location, at.CustomerSite) as consignorName,
-          COALESCE(vend.VendorName, at.VendorName) as vendor,
+          COALESCE(at.CustSite, at.CustomerSite, at.Location, p.ProjectName) as consignorName,
+          p.ProjectName as projectName,
+          'COGENT LOGISTICS' as vendor,
           at.VehicleNumber as vehicle,
           at.VehicleType as vehicleType,
           COALESCE(at.VehicleOwnershipType, at.TripType) as vehicleOwnership,
-          COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub) as actualStart,
-          COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub) as actualEnd,
+          CASE 
+            WHEN COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub) IS NOT NULL 
+            THEN CONCAT(DATE_FORMAT(COALESCE(at.ServiceDate, at.TransactionDate), '%d/%m/%Y'), ' ', COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub))
+            ELSE NULL 
+          END as actualStart,
+          CASE 
+            WHEN COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub) IS NOT NULL 
+            THEN CONCAT(DATE_FORMAT(COALESCE(at.ServiceDate, at.TransactionDate), '%d/%m/%Y'), ' ', COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub))
+            ELSE NULL 
+          END as actualEnd,
           COALESCE(at.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub), COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub)), 0) as transit,
           COALESCE(at.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub), COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub)), 0) as total,
           at.ExtraKM as extra,
@@ -313,8 +340,8 @@ export const invoiceService = {
       
       // Fetch commercial for exact customer and project
       const [commercialRows]: any = await db.query(
-        "SELECT * FROM customer_commercial WHERE (customer_id = ? OR ? IS NULL) AND type_of_vehicle_placement = 'Fixed'",
-        [customerId, customerId]
+        "SELECT * FROM customer_commercial WHERE (customer_id = ? OR ? IS NULL) AND (project_id = ? OR ? IS NULL) AND type_of_vehicle_placement = 'Fixed'",
+        [customerId, customerId, projectId, projectId]
       );
       
       misRows.forEach((row: any) => {
@@ -323,15 +350,17 @@ export const invoiceService = {
         // Find specific commercial for this vehicle type, or fallback to row's joined cc values, or first match
         const comm = commercialRows.find((c: any) => c.type_of_vehicle === row.vehicleType) || commercialRows[0] || {};
         
-        const extraKmRate = Number(row.cc_additional_rate_per_km || comm.additional_rate_per_km || 7);
-        const extraHourRate = Number(row.cc_over_time_charges || comm.over_time_charges || 60);
-        const fixedKms = Number(row.cc_km_include || comm.km_include_in_fix_rate || 5500);
-        const fixedRate = Number(row.cc_fixed_rate || comm.fixed_rate || 64500);
+        const extraKmRate = Number(row.cc_additional_rate_per_km || comm.additional_rate_per_km || 0);
+        const extraHourRate = Number(row.cc_over_time_charges || comm.over_time_charges || 0);
+        const fixedKms = Number(row.cc_km_include || comm.km_include_in_fix_rate || 0);
+        const fixedRate = Number(row.cc_fixed_rate || comm.fixed_rate || 0);
+        const workingDaysToBeDone = Number(row.cc_no_of_days_per_month || comm.no_of_days_per_month || workingDaysInMonth);
+        const hours = Number(row.cc_hours || comm.hours || 0);
         const dieselHike = 0; 
         const totalChargesWithDieselHike = fixedRate + dieselHike;
-        const vehicleTypeStr = comm.type_of_vehicle || row.vehicleType || 'Tata Ace';
-        const mode = comm.type_of_vehicle_placement || 'UP Large';
-        const vertical = comm.description_only_sbs || 'LM'; // dynamically mapped or fallback LM
+        const vehicleTypeStr = comm.type_of_vehicle || row.vehicleType || '';
+        const mode = row.projectName || (comm.project ? comm.project.split(' / ')[0] : '') || comm.type_of_vehicle_placement || '';
+        const vertical = row.cc_vertical || comm.description_only_sbs || 'LM'; 
         
         if (!flipkartMap.has(veh)) {
           flipkartMap.set(veh, {
@@ -341,12 +370,12 @@ export const invoiceService = {
             mode: mode,
             location: row.ourBranch || row.ourState || row.consignorName,
             vertical: vertical,
-            noOfHours: comm.hours || 12,
+            noOfHours: hours,
             fixedKms: fixedKms,
             agreementRate: fixedRate,
             dieselHike: dieselHike,
             totalChargesWithDieselHike: totalChargesWithDieselHike,
-            workingDaysToBeDone: workingDaysInMonth,
+            workingDaysToBeDone: workingDaysToBeDone,
             daysActualDone: new Set(),
             totalKMs: 0,
             extraHour: 0,
@@ -359,6 +388,7 @@ export const invoiceService = {
             perDayCost: 0,
             tWorkingDaysAmount: 0,
             tollCharges: 0,
+            commTollParking: Number(row.cc_toll || comm.toll || 0) + Number(row.cc_parking || comm.parking || 0),
             amount: 0
           });
         }
@@ -366,7 +396,7 @@ export const invoiceService = {
         const summary = flipkartMap.get(veh);
         summary.daysActualDone.add(new Date(row.date).toISOString().split('T')[0]);
         summary.totalKMs += Number(row.distance || 0);
-        summary.tollCharges += Number(row.ParkingCharges || 0);
+        summary.tollCharges += Number(row.ParkingCharges || 0) + Number(row.TollExpenses || 0);
         
         // Calculate extra hours for this trip
         const transitHours = Number(row.transit || 0);
@@ -378,6 +408,11 @@ export const invoiceService = {
       flipkartAnnexureData = Array.from(flipkartMap.values()).map((summary: any) => {
         const actualDays = summary.daysActualDone.size;
         summary.daysActualDone = actualDays;
+
+        if (summary.tollCharges === 0 && summary.commTollParking > 0) {
+          summary.tollCharges = summary.commTollParking;
+        }
+        delete summary.commTollParking;
         
         summary.extraKm = Math.max(summary.totalKMs - summary.fixedKms, 0);
         summary.extraKmCharge = summary.extraKm * summary.extraKmRate;
@@ -401,14 +436,14 @@ export const invoiceService = {
         const adhocMap = new Map();
         
         const [commercialRows]: any = await db.query(
-          "SELECT * FROM customer_commercial WHERE (customer_id = ? OR ? IS NULL) AND type_of_vehicle_placement = 'Adhoc'",
-          [customerId, customerId]
+          "SELECT * FROM customer_commercial WHERE (customer_id = ? OR ? IS NULL) AND (project_id = ? OR ? IS NULL) AND type_of_vehicle_placement = 'Adhoc'",
+          [customerId, customerId, projectId, projectId]
         );
         
         misRows.forEach((row: any) => {
           const comm = commercialRows.find((c: any) => c.type_of_vehicle === row.vehicleType) || commercialRows[0] || {};
-          const extraKmRate = Number(row.cc_additional_rate_per_km || comm.additional_rate_per_km || 7);
-          const fixRate = Number(row.cc_fixed_rate || comm.fixed_rate || 2200);
+          const extraKmRate = Number(row.cc_additional_rate_per_km || comm.additional_rate_per_km || 0);
+          const fixRate = Number(row.cc_fixed_rate || comm.fixed_rate || 0);
 
           const loc = row.ourBranch || row.ourState || row.consignorName || 'Unknown';
           if (!adhocMap.has(loc)) {
@@ -446,7 +481,8 @@ export const invoiceService = {
       annexureData,
       flipkartAnnexureData,
       flipkartAdhocAnnexureData,
-      fallbackCustomerGSTIN
+      fallbackCustomerGSTIN,
+      fallbackCustomerAddress
     };
   },
 
