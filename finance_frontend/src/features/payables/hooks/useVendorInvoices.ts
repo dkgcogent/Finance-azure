@@ -8,10 +8,10 @@ export const useVendors = () => {
   });
 };
 
-export const useVendorTrips = (vendorName: string, startDate: string, endDate: string, tripType: string) => {
+export const useVendorTrips = (vendorName: string, startDate: string, endDate: string, tripType: string, customerId?: string, projectId?: string, locationId?: string) => {
   return useQuery({
-    queryKey: ['vendorTrips', vendorName, startDate, endDate, tripType],
-    queryFn: () => vendorInvoiceService.getVendorTrips(vendorName, startDate, endDate, tripType),
+    queryKey: ['vendorTrips', vendorName, startDate, endDate, tripType, customerId, projectId, locationId],
+    queryFn: () => vendorInvoiceService.getVendorTrips(vendorName, startDate, endDate, tripType, customerId, projectId, locationId),
     enabled: !!vendorName && !!startDate && !!endDate && !!tripType
   });
 };

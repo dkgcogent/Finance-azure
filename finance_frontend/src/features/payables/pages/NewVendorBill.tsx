@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react"
+import React, { useState, useRef, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -7,6 +7,7 @@ import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import { useCustomerInvoices } from "@/features/invoicing/hooks/useCustomerInvoices"
 import { useVendors, useVendorTrips, useCreateVendorInvoice } from "../hooks/useVendorInvoices"
+import { useMasterData } from "@/features/invoicing/hooks/useInvoiceReports"
 
 const mockAnnexureData = [
   { sno: 1, location: "SATELLITEHUB_ALD", trips: 3, rates: 1890, extraKm: 155, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 5670, extraKmCost: 1217, dcmCharges: 300, totalAmount: 7187 },
@@ -53,19 +54,45 @@ import { numberToWords } from "@/lib/utils"
 
 export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
   const [step, setStep] = useState<"details" | "mis" | "annexure" | "preview">("details")
+  const [customerId, setCustomerId] = useState("")
+  const [projectId, setProjectId] = useState("")
+  const [locationId, setLocationId] = useState("")
   const [linkedInvoice, setLinkedInvoice] = useState("")
   const [vehicleType, setVehicleType] = useState("")
   const [vendorId, setVendorId] = useState("")
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0])
+  const [costCode, setCostCode] = useState("")
 
+  const { customers, projects, locations, isLoading: isMasterLoading } = useMasterData();
   const { data: customerInvoices } = useCustomerInvoices('25-26');
   const { data: vendors } = useVendors();
-  const { data: vendorTrips, isLoading: isTripsLoading } = useVendorTrips(vendorId, startDate, endDate, vehicleType);
+  const { data: vendorTrips, isLoading: isTripsLoading } = useVendorTrips(vendorId, startDate, endDate, vehicleType, customerId, projectId, locationId);
 
-  console.log("Customer Invoices Debug:", customerInvoices);
-  console.log("Vendors Debug:", vendors);
+  const filteredProjects = useMemo(() => {
+    if (!customerId) return [];
+    return projects.filter((p: any) => String(p.customerId) === String(customerId));
+  }, [projects, customerId]);
+
+  const filteredLocations = useMemo(() => {
+    if (!customerId) return [];
+    const locs = locations.filter((l: any) => String(l.customerId) === String(customerId));
+    const seenNames = new Set<string>();
+    return locs.filter((l: any) => {
+      const name = (l.name || '').trim();
+      if (!name || seenNames.has(name)) return false;
+      seenNames.add(name);
+      return true;
+    });
+  }, [locations, customerId]);
+
+  const handleCustomerChange = (id: string) => {
+    setCustomerId(id);
+    setProjectId("");
+    setLocationId("");
+    setVehicleType("");
+  };
 
   const createInvoiceMutation = useCreateVendorInvoice();
   const pdfRef = useRef<HTMLDivElement>(null)
@@ -192,7 +219,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
       try {
         const amount = Number((vendorTrips?.misData || []).reduce((acc: number, row: any) => acc + (row.totalAmount || row.finalAmt || 0), 0));
         const vendorNameStr = vendorTrips?.vendorInfo?.VendorName || vendors?.find(v => v.id.toString() === vendorId)?.name || 'Unknown Vendor';
-        
+
         const styleElements = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'));
         const stylesHtml = styleElements.map(el => el.outerHTML).join('\n');
         const htmlPayload = pdfRef.current ? `
@@ -257,11 +284,11 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     if (step === "mis") {
       dataToExport = vendorTrips?.annexureData || [];
       if (vehicleType === "adhoc") {
-        keys = ["location", "vendor", "vehicleNumber", "vehicleType", "vehicleOwnership", "driverType", "inTime", "outTime", "startOdometer", "endOdometer", "distance", "extraKm", "extraKmRate", "fixCost", "extraKmCost", "dcmCharges", "totalFreight"];
-        labels = ["Location", "Vendor", "Vehicle Number", "Vehicle Type", "Vehicle Ownership", "Driver Type", "In Time", "Out Time", "Start Odometer", "End Odometer", "Distance", "Extra Km", "Extra Km Rate", "Fix Cost", "Extra Km Cost", "DCM Charges", "Total Freight"];
+        keys = ["date", "hub", "loc", "vendor", "vehNo", "vehType", "parentVeh", "ownType", "driverType", "inTime", "outTime", "startOdo", "endOdo", "dist", "extraKm"];
+        labels = ["Date", "Hub Name", "Billing Location", "Vendor", "Vehicle Number", "Vehicle Type", "Parent Vehicle", "Vehicle Ownership Type", "Driver Type", "In Time", "Out Time", "Start Odometer", "End Odometer", "Distance", "Extra Km"];
       } else {
         keys = ["date", "hub", "loc", "vendor", "vehNo", "vehType", "parentVeh", "ownType", "driverType", "inTime", "outTime", "startOdo", "endOdo", "dist"];
-        labels = ["Date", "Hub Name", "Billing Location", "Vendor", "Vehicle Number", "Vehicle Type", "Parent Vehicle", "Ownership Type", "Driver Type", "In Time", "Out Time", "Start Odometer", "End Odometer", "Distance"];
+        labels = ["Date", "Hub Name", "Billing Location", "Vendor", "Vehicle Number", "Vehicle Type", "Parent Vehicle", "Vehicle Ownership Type", "Driver Type", "In Time", "Out Time", "Start Odometer", "End Odometer", "Distance"];
       }
     } else if (step === "annexure") {
       dataToExport = vendorTrips?.misData || [];
@@ -270,7 +297,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
         labels = ["S. No.", "Location", "No Of Trips", "Rates", "Extra KM", "Extra KM Rate", "Extra Hrs Rate", "Fixed Cost", "Extra KM Cost", "DCM Charges", "Total Amount"];
       } else {
         keys = ["id", "vehNo", "vehType", "mode", "loc", "vertical", "hrs", "fixedKms", "agRate", "dieselHike", "totWithHike", "workDays", "actualDays", "totKms", "extHrAmt", "extHr", "extHrRate", "extKmRate", "dynFuel", "totExtKmRate", "perDayCost", "perDayKm", "actualDeployed", "extKm", "extKmCharge", "totalAmt", "toll", "dcm", "finalAmt"];
-        labels = ["S.No.", "Vehicle Number", "Type of Vehicle", "Mode", "Location", "Vertical", "No. of hours", "Fixed Kms", "Agreement Rate", "Diesel Hike", "Total Charges with Diesel Hike", "Nos. of Working days", "Nos of days actual done", "Total KMs", "Extra Hour Amount", "Extra Hour", "Extra Hours Rate", "Extra KM rate", "Dynamic Fuel incr", "Extra KM rate", "Per Day Cost", "Per Day KM Conside", "Actual Deployed Days", "Extra Km", "Extra Km Charge", "Total Amount", "Toll charges", "DCM Charges", "Final Amount"];
+        labels = ["S.No.", "Vehicle Number", "Type of Vehicle", "Mode", "Location", "Vertical", "No. of hours", "Fixed Kms", "Agreement Rate", "Diesel Hike", "Total Charges with Diesel Hike", "Nos. of Working days", "Nos of days actual done", "Total KMs", "Extra Hour Amount", "Extra Hour", "Extra Hours Rate", "Extra KM rate", "Dynamic Fuel incr", "Extra KM Rate D", "Per Day Cost", "Per Day KM Conside", "Actual Deployed Days", "Extra Km", "Extra Km Charge", "Total Amount", "Toll charges", "DCM Charges", "Final Amount"];
       }
     }
 
@@ -279,12 +306,12 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     const formatForExcel = (val: any, key: string) => {
       if (val === null || val === undefined) return '';
       let strVal = val.toString();
-      
+
       // Force text rendering in Excel to prevent scientific notation (9.03E+10) or ######## width issues
       if (key === 'date' || key === 'vehNo' || key === 'parentVeh' || key === 'vehicleNumber' || key === 'inTime' || key === 'outTime') {
         strVal = ` ${strVal}`;
       }
-      
+
       return strVal.replace(/"/g, '""');
     };
 
@@ -358,32 +385,69 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
           {step === "details" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <label className="text-sm font-medium">Linked Invoice No.</label>
-                <Select value={linkedInvoice} onValueChange={(val) => setLinkedInvoice(val || "")}>
-                  <SelectTrigger className="w-full h-10">
-                    <SelectValue placeholder="Select a customer invoice..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {customerInvoices?.map((inv: any) => (
-                      <SelectItem key={inv.id} value={inv.invoiceNumber}>
-                        {inv.invoiceNumber}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <label className="text-sm font-medium">Customer</label>
+                <select
+                  value={customerId}
+                  onChange={(e) => handleCustomerChange(e.target.value)}
+                  disabled={isMasterLoading}
+                  className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">Select a customer...</option>
+                  {customers.map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Type of Vehicle</label>
-                <Select value={vehicleType} onValueChange={(val) => setVehicleType(val || "")}>
-                  <SelectTrigger className="w-full h-10">
-                    <SelectValue placeholder="Select type..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="adhoc">Adhoc</SelectItem>
-                    <SelectItem value="fixed">Fixed</SelectItem>
-                  </SelectContent>
-                </Select>
+                <label className="text-sm font-medium">Project</label>
+                <select
+                  value={projectId}
+                  onChange={(e) => {
+                    setProjectId(e.target.value);
+                    setLocationId("");
+                    setVehicleType("");
+                  }}
+                  disabled={!customerId || isMasterLoading}
+                  className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">Select a project...</option>
+                  {filteredProjects.map((p: any) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Location</label>
+                <select
+                  value={locationId}
+                  onChange={(e) => {
+                    setLocationId(e.target.value);
+                    setVehicleType("");
+                  }}
+                  disabled={!projectId || isMasterLoading}
+                  className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">Select a location...</option>
+                  {filteredLocations.map((l: any) => (
+                    <option key={l.id} value={l.id}>{l.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Type</label>
+                <select
+                  value={vehicleType}
+                  onChange={(e) => setVehicleType(e.target.value)}
+                  disabled={!locationId}
+                  className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <option value="">Select type...</option>
+                  <option value="fixed">Fixed</option>
+                  <option value="adhoc">Adhoc</option>
+                </select>
               </div>
 
               <div className="space-y-2">
@@ -401,19 +465,39 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Start Date</label>
-                <input type="date" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" value={startDate} onChange={e => setStartDate(e.target.value)} />
-              </div>
-              
-              <div className="space-y-2">
-                <label className="text-sm font-medium">End Date</label>
-                <input type="date" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                <label className="text-sm font-medium">Period</label>
+                <div className="flex items-center gap-2">
+                  <input type="date" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" value={startDate} onChange={e => setStartDate(e.target.value)} />
+                  <span className="text-muted-foreground text-sm font-medium">to</span>
+                  <input type="date" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" value={endDate} onChange={e => setEndDate(e.target.value)} />
+                </div>
               </div>
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Issue Date</label>
                 <input type="date" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
               </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Cost Code</label>
+                <input type="text" placeholder="e.g. 4462" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" value={costCode} onChange={e => setCostCode(e.target.value)} />
+              </div>
+
+              {/* <div className="space-y-2">
+                <label className="text-sm font-medium">Linked Invoice No. <span className="text-xs text-muted-foreground">(Optional)</span></label>
+                <Select value={linkedInvoice} onValueChange={(val) => setLinkedInvoice(val || "")}>
+                  <SelectTrigger className="w-full h-10">
+                    <SelectValue placeholder="Select a customer invoice..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {customerInvoices?.map((inv: any) => (
+                      <SelectItem key={inv.id} value={inv.invoiceNumber}>
+                        {inv.invoiceNumber}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div> */}
             </div>
           )}
 
@@ -500,7 +584,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                     <th className="border border-black p-1 font-bold">Location</th>
                     <th className="border border-black p-1 font-bold">Vertical</th>
                     <th className="border border-black p-1 font-bold">No. of hours</th>
-                    <th className="border border-black p-1 font-bold">Fixed Kms (27 Days)</th>
+                    <th className="border border-black p-1 font-bold">Fixed Kms</th>
                     <th className="border border-black p-1 font-bold">Agreement Rate</th>
                     <th className="border border-black p-1 font-bold">Diesel Hike</th>
                     <th className="border border-black p-1 font-bold">Total Charges with Diesel Hike</th>
@@ -512,7 +596,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                     <th className="border border-black p-1 font-bold">Extra Hours Rate</th>
                     <th className="border border-black p-1 font-bold">Extra KM rate</th>
                     <th className="border border-black p-1 font-bold">Dynamic Fuel incr</th>
-                    <th className="border border-black p-1 font-bold">Extra KM rate</th>
+                    <th className="border border-black p-1 font-bold">Extra KM Rate D</th>
                     <th className="border border-black p-1 font-bold">Per Day Cost (MG)</th>
                     <th className="border border-black p-1 font-bold">Per Day KM Conside</th>
                     <th className="border border-black p-1 font-bold">Actual Deployed Days Excluding extra Km</th>
@@ -547,8 +631,8 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                       <td className="border border-black p-1">{row.extKmRate}</td>
                       <td className="border border-black p-1 font-bold bg-yellow-300">{row.dynFuel.toFixed(2)}</td>
                       <td className="border border-black p-1">{row.totExtKmRate}</td>
-                      <td className="border border-black p-1">{row.perDayCost}</td>
-                      <td className="border border-black p-1">{row.perDayKm}</td>
+                      <td className="border border-black p-1">{Number(row.perDayCost || 0).toFixed(2)}</td>
+                      <td className="border border-black p-1">{Number(row.perDayKm || 0).toFixed(2)}</td>
                       <td className="border border-black p-1">{row.actualDeployed}</td>
                       <td className="border border-black p-1">{row.extKm}</td>
                       <td className="border border-black p-1">{row.extKmCharge}</td>
@@ -560,79 +644,14 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                   ))}
                   <tr className="font-bold bg-muted/10">
                     <td colSpan={28} className="border border-black p-2 text-right pr-4 text-sm">Total</td>
-                    <td className="border border-black p-2 text-center text-sm font-bold">{Number((vendorTrips?.misData || []).reduce((acc: number, row: any) => acc + (row.finalAmt || 0), 0)).toLocaleString('en-IN')}</td>
+                    <td className="border border-black p-2 text-center text-sm font-bold">{Number((vendorTrips?.misData || []).reduce((acc: number, row: any) => acc + (parseFloat(row.finalAmt || row.totalAmount || '0') || 0), 0)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                   </tr>
                 </tbody>
               </table>
             </div>
           )}
 
-          {step === "mis" && vehicleType === "adhoc" && (
-            <div className="overflow-x-auto w-full pb-4">
-              <table className="w-[1400px] max-w-none border-collapse border border-black text-[10px] text-center">
-                <thead>
-                  <tr className="bg-white">
-                    <th className="border border-black p-1 text-[10px] font-bold" colSpan={2}>Project Name</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Vehicle Number</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Vehicle Type</th>
-                    <th className="border border-black p-1 text-[10px] font-bold" colSpan={2}>Trip Type</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Vehicle Reporting At Hub</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Vehicle Out From Hub Final</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Opening KM</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Closing KM</th>
-                    <th className="border border-black p-1 text-[10px] font-bold" colSpan={3}>Total KM</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">V.Freight (Variable)</th>
-                    <th className="border border-black p-1 text-[10px] font-bold" colSpan={2}>V.Freight (Fix)</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Total Freight</th>
-                  </tr>
-                  <tr className="bg-muted/10">
-                    <th className="border border-black p-1 text-[10px] font-bold">Billing Location</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Vendor</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Vehicle Number</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Vehicle Type</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Vehicle Ownership Type</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Driver Type</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">In Time</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Out Time</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Start Odometer</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">End Odometer</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Distance</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Extra KM</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Extra KM Rate</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Fix Cost</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Extra KM Cost</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">DCM Charges</th>
-                    <th className="border border-black p-1 text-[10px] font-bold">Total Cost</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(vendorTrips?.annexureData || []).map((row: any, i: number) => (
-                    <tr key={i} className="hover:bg-muted/20 text-[10px]">
-                      <td className="border border-black p-1">{row.location}</td>
-                      <td className="border border-black p-1 text-left">{row.vendor}</td>
-                      <td className="border border-black p-1">{row.vehicleNumber}</td>
-                      <td className="border border-black p-1">{row.vehicleType}</td>
-                      <td className="border border-black p-1">{row.vehicleOwnership}</td>
-                      <td className="border border-black p-1">{row.driverType}</td>
-                      <td className="border border-black p-1">{row.inTime}</td>
-                      <td className="border border-black p-1">{row.outTime}</td>
-                      <td className="border border-black p-1">{row.startOdometer}</td>
-                      <td className="border border-black p-1">{row.endOdometer}</td>
-                      <td className="border border-black p-1">{row.distance}</td>
-                      <td className="border border-black p-1">{row.extraKm}</td>
-                      <td className="border border-black p-1">{row.extraKmRate}</td>
-                      <td className="border border-black p-1">{Number(row.fixCost || 0).toLocaleString('en-IN')}</td>
-                      <td className="border border-black p-1">{row.extraKmCost}</td>
-                      <td className="border border-black p-1">{row.dcmCharges}</td>
-                      <td className="border border-black p-1 font-medium">{Number(row.totalFreight || row.fixCost || 0).toLocaleString('en-IN')}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {step === "mis" && vehicleType === "fixed" && (
+          {step === "mis" && (
             <div className="overflow-x-auto w-full pb-4">
               <table className="w-full border-collapse border border-black text-[10px] text-center">
                 <thead>
@@ -651,25 +670,31 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                     <th className="border border-black p-1 font-bold">Start Odometer</th>
                     <th className="border border-black p-1 font-bold">End Odometer</th>
                     <th className="border border-black p-1 font-bold">Distance</th>
+                    {vehicleType === "adhoc" && <th className="border border-black p-1 font-bold">Extra Km</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {(vendorTrips?.annexureData || []).map((row: any, i: number) => (
                     <tr key={i} className="hover:bg-muted/20">
                       <td className="border border-black p-1">{row.date}</td>
-                      <td className="border border-black p-1">{row.hub}</td>
-                      <td className="border border-black p-1">{row.loc}</td>
+                      <td className="border border-black p-1">{row.hub || row.location}</td>
+                      <td className="border border-black p-1">{row.loc || row.location}</td>
                       <td className="border border-black p-1 text-left">{row.vendor}</td>
-                      <td className="border border-black p-1">{row.vehNo}</td>
-                      <td className="border border-black p-1">{row.vehType}</td>
-                      <td className="border border-black p-1 font-medium">{row.parentVeh}</td>
-                      <td className="border border-black p-1">{row.ownType}</td>
-                      <td className="border border-black p-1">{row.driverType}</td>
+                      <td className="border border-black p-1">{row.vehNo || row.vehicleNumber}</td>
+                      <td className="border border-black p-1">{row.vehType || row.vehicleType}</td>
+                      <td className="border border-black p-1 font-medium">{row.parentVeh || row.vehicleNumber}</td>
+                      <td className="border border-black p-1">{row.ownType || row.vehicleOwnership}</td>
+                      <td className="border border-black p-1">{row.driverType || 'Driver'}</td>
                       <td className="border border-black p-1">{row.inTime}</td>
                       <td className="border border-black p-1">{row.outTime}</td>
-                      <td className="border border-black p-1">{row.startOdo}</td>
-                      <td className="border border-black p-1">{row.endOdo}</td>
-                      <td className="border border-black p-1 font-medium">{row.dist}</td>
+                      <td className="border border-black p-1">{row.startOdo ?? row.startOdometer}</td>
+                      <td className="border border-black p-1">{row.endOdo ?? row.endOdometer}</td>
+                      <td className="border border-black p-1 font-medium">{row.dist ?? row.distance}</td>
+                      {vehicleType === "adhoc" && (
+                        <td className="border border-black p-1 font-medium">
+                          {row.extraKm ?? Math.max(0, (row.dist ?? row.distance ?? 0) - 100)}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>
@@ -761,18 +786,23 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                       const startMonth = start.toLocaleDateString('en-GB', { month: 'long' });
                       const endMonth = end.toLocaleDateString('en-GB', { month: 'long' });
                       const year = end.getFullYear();
-                      
+
                       let locStr = "UP";
-                      if (vendorTrips?.misData && vendorTrips.misData.length > 0) {
+                      const selectedLocObj = locations.find((l: any) => String(l.id) === String(locationId));
+                      if (selectedLocObj?.name) {
+                        locStr = selectedLocObj.name;
+                      } else if (vendorTrips?.misData && vendorTrips.misData.length > 0) {
                         const firstLoc = vendorTrips.misData[0].loc || vendorTrips.misData[0].location || "";
-                        if (firstLoc.includes("SATELLITEHUB_")) {
+                        if (firstLoc.includes("-")) {
+                          locStr = firstLoc.split("-")[0].trim();
+                        } else if (firstLoc.includes("SATELLITEHUB_")) {
                           locStr = firstLoc.split("_")[1] || "UP";
                         } else {
                           locStr = firstLoc.split(" ")[0] || "UP";
                         }
                       }
                       const tripTypeStr = vehicleType === 'fixed' ? 'Fix' : 'Adhoc';
-                      
+
                       return `${tripTypeStr} Transportation Charges ${locStr} for the Period Of ${getOrdinal(start.getDate())} ${startMonth} to ${getOrdinal(end.getDate())} ${endMonth} ${year} (as per annexure attached)`;
                     })()}
                   </div>
@@ -793,8 +823,8 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                       <td className="border-r-[3px] border-black p-1">1</td>
                       <td className="border-r-[3px] border-black p-1">996601</td>
                       <td className="border-r-[3px] border-black p-1">Transportation Charges</td>
-                      <td className="border-r-[3px] border-black p-1">4477</td>
-                      <td className="p-1">{Number((vendorTrips?.misData || []).reduce((acc: number, row: any) => acc + (row.totalAmount || row.finalAmt || 0), 0)).toLocaleString('en-IN')}</td>
+                      <td className="border-r-[3px] border-black p-1">{costCode || '4477'}</td>
+                      <td className="p-1">{Number((vendorTrips?.misData || []).reduce((acc: number, row: any) => acc + (parseFloat(row.finalAmt || row.totalAmount || '0') || 0), 0)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                     <tr className="border-b-[3px] border-black h-8">
                       <td className="border-r-[3px] border-black"></td>
@@ -815,7 +845,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                       <td className="border-r-[3px] border-black"></td>
                       <td className="border-r-[3px] border-black"></td>
                       <td className="border-r-[3px] border-black p-1 font-bold">Total</td>
-                      <td className="p-1">{Number((vendorTrips?.misData || []).reduce((acc: number, row: any) => acc + (row.totalAmount || row.finalAmt || 0), 0)).toLocaleString('en-IN')}</td>
+                      <td className="p-1">{Number((vendorTrips?.misData || []).reduce((acc: number, row: any) => acc + (parseFloat(row.finalAmt || row.totalAmount || '0') || 0), 0)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                     </tr>
                   </tbody>
                 </table>
@@ -851,10 +881,10 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                 <div className="border-b-[3px] border-black text-sm flex font-bold">
                   <div className="flex-1 border-r-[3px] border-black flex flex-col justify-center">
                     <div className="border-b-[3px] border-black p-1 pl-2 w-full">Amount in Words :</div>
-                    <div className="p-1 pl-2 font-normal">-- {numberToWords(Number((vendorTrips?.misData || []).reduce((acc: number, row: any) => acc + (row.totalAmount || row.finalAmt || 0), 0)))} --</div>
+                    <div className="p-1 pl-2 font-normal">-- {numberToWords(Number((vendorTrips?.misData || []).reduce((acc: number, row: any) => acc + (parseFloat(row.finalAmt || row.totalAmount || '0') || 0), 0)))} --</div>
                   </div>
                   <div className="w-[140px] border-r-[3px] border-black p-1 text-center flex items-center justify-center">Total</div>
-                  <div className="w-[160px] p-1 pr-2 text-right flex items-center justify-end">{Number((vendorTrips?.misData || []).reduce((acc: number, row: any) => acc + (row.totalAmount || row.finalAmt || 0), 0)).toLocaleString('en-IN')}</div>
+                  <div className="w-[160px] p-1 pr-2 text-right flex items-center justify-end">{Number((vendorTrips?.misData || []).reduce((acc: number, row: any) => acc + (parseFloat(row.finalAmt || row.totalAmount || '0') || 0), 0)).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
                 </div>
 
                 <div className="border-b-[3px] border-black text-sm relative min-h-[120px]">
@@ -871,7 +901,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
 
           <div className="flex justify-between items-center mt-8 pt-6 border-t">
             <Button variant="outline" onClick={handlePrev}>Prev</Button>
-            
+
             <div className="flex items-center gap-4">
               <Button
                 className="bg-blue-600 text-white hover:bg-blue-700"
@@ -887,3 +917,4 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     </div>
   )
 }
+

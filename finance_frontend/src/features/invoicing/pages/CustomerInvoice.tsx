@@ -103,7 +103,14 @@ export default function CustomerInvoice() {
 
   const filteredLocations = useMemo(() => {
     if (!invoiceCustomer) return [];
-    return locations.filter((l: any) => l.customerId === parseInt(invoiceCustomer) || l.customerId === invoiceCustomer);
+    const locs = locations.filter((l: any) => l.customerId === parseInt(invoiceCustomer) || l.customerId === invoiceCustomer);
+    const seenNames = new Set<string>();
+    return locs.filter((l: any) => {
+      const name = (l.name || '').trim();
+      if (!name || seenNames.has(name)) return false;
+      seenNames.add(name);
+      return true;
+    });
   }, [locations, invoiceCustomer]);
 
   const reportMutation = useGenerateInvoiceReports()
@@ -344,7 +351,7 @@ export default function CustomerInvoice() {
     if (type === "mis") {
       dataToExport = reportData?.misData || [];
       keys = ["date", "consignorName", "vendor", "vehicle", "vehicleOwnership", "actualStart", "actualEnd", "transit", "total", "extra", "working", "startKm", "endKm", "distance", "extraKm", "orderNumber", "tripLogNumber"];
-      labels = ["Date", "Consignor Name", "Vendor", "Vehicle No.", "Vehicle Ownership", "Actual Start", "Actual End", "Transit", "Total", "Extra Hrs", "Working Hours", "Start Odometer", "End Odometer", "Distance", "Extra Km", "Order Number", "Trip Log Number"];
+      labels = ["Date", "Consignor Name", "Vendor", "Vehicle No.", "Vehicle Ownership", "Actual Start", "Actual End", "Transit Time", "Total Hrs", "Extra Hrs", "Working Hours", "Start Odometer", "End Odometer", "Distance", "Extra Km", "Order Number", "Trip Log Number"];
     } else if (type === "annexure") {
       if (reportData?.flipkartAnnexureData && reportData.flipkartAnnexureData.length > 0) {
         dataToExport = reportData.flipkartAnnexureData;
@@ -699,8 +706,8 @@ export default function CustomerInvoice() {
                         <th className="p-2 border border-black font-bold">Vehicle Ownership</th>
                         <th className="p-2 border border-black font-bold">Actual Start</th>
                         <th className="p-2 border border-black font-bold">Actual End</th>
-                        <th className="p-2 border border-black font-bold">Transit</th>
-                        <th className="p-2 border border-black font-bold">Total</th>
+                        <th className="p-2 border border-black font-bold">Transit Time</th>
+                        <th className="p-2 border border-black font-bold">Total Hrs</th>
                         <th className="p-2 border border-black font-bold">Extra Hrs</th>
                         <th className="p-2 border border-black font-bold">Working Hours</th>
                         <th className="p-2 border border-black font-bold">Start Odometer</th>
@@ -721,7 +728,7 @@ export default function CustomerInvoice() {
                           <td className="p-1 border border-black bg-white">{row.vehicleOwnership || '—'}</td>
                           <td className="p-1 border border-black bg-white">{row.actualStart || '—'}</td>
                           <td className="p-1 border border-black bg-white">{row.actualEnd || '—'}</td>
-                          <td className="p-1 border border-black bg-white">{row.transit ?? 0}</td>
+                          <td className="p-1 border border-black bg-white">{Math.round(Number(row.transit || 0))}</td>
                           <td className="p-1 border border-black bg-white">{row.total ?? 0}</td>
                           <td className="p-1 border border-black bg-white">{row.extra ?? 0}</td>
                           <td className="p-1 border border-black bg-white">{row.working ?? 0}</td>
