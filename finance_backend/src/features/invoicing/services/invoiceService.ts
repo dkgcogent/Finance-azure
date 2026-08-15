@@ -157,12 +157,12 @@ export const invoiceService = {
       query = `
         SELECT 
           COALESCE(ft.ServiceDate, ft.TransactionDate) as date,
-          COALESCE(ft.CustomerSite, ft.Location, p.ProjectName) as consignorName,
+          TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(COALESCE(ft.CustomerSite, ft.Location, p.ProjectName), ' (', 1), ' - ', -1)) as consignorName,
           p.ProjectName as projectName,
           'COGENT LOGISTICS' as vendor,
           COALESCE(v.VehicleRegistrationNo, ft.VehicleNumber) as vehicle,
           COALESCE(v.VehicleType, ft.VehicleType) as vehicleType,
-          ft.TripType as vehicleOwnership,
+          'Fixed' as vehicleOwnership,
           CASE 
             WHEN COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub) IS NOT NULL 
             THEN CONCAT(DATE_FORMAT(COALESCE(ft.ServiceDate, ft.TransactionDate), '%d/%m/%Y'), ' ', COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub))
@@ -173,9 +173,13 @@ export const invoiceService = {
             THEN CONCAT(DATE_FORMAT(COALESCE(ft.ServiceDate, ft.TransactionDate), '%d/%m/%Y'), ' ', COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub))
             ELSE NULL 
           END as actualEnd,
-          COALESCE(ft.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub), COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub)), 0) as transit,
-          COALESCE(ft.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub), COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub)), 0) as total,
-          0 as extra,
+          ROUND(COALESCE(ft.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub), COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub)), 0)) as transit,
+          12 as total,
+          CASE 
+            WHEN COALESCE(ft.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub), COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub)), 0) > 12 
+            THEN ROUND(COALESCE(ft.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub), COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub)), 0) - 12)
+            ELSE 0 
+          END as extra,
           COALESCE(ft.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub), COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub)), 0) as working,
           ft.OpeningKM as startKm,
           ft.ClosingKM as endKm,
@@ -218,12 +222,12 @@ export const invoiceService = {
       query = `
         SELECT 
           COALESCE(at.ServiceDate, at.TransactionDate) as date,
-          COALESCE(at.CustSite, at.CustomerSite, at.Location, p.ProjectName) as consignorName,
+          TRIM(SUBSTRING_INDEX(SUBSTRING_INDEX(COALESCE(at.CustSite, at.CustomerSite, at.Location, p.ProjectName), ' (', 1), ' - ', -1)) as consignorName,
           p.ProjectName as projectName,
           'COGENT LOGISTICS' as vendor,
           at.VehicleNumber as vehicle,
           at.VehicleType as vehicleType,
-          COALESCE(at.VehicleOwnershipType, at.TripType) as vehicleOwnership,
+          'Adhoc' as vehicleOwnership,
           CASE 
             WHEN COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub) IS NOT NULL 
             THEN CONCAT(DATE_FORMAT(COALESCE(at.ServiceDate, at.TransactionDate), '%d/%m/%Y'), ' ', COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub))
@@ -234,9 +238,13 @@ export const invoiceService = {
             THEN CONCAT(DATE_FORMAT(COALESCE(at.ServiceDate, at.TransactionDate), '%d/%m/%Y'), ' ', COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub))
             ELSE NULL 
           END as actualEnd,
-          COALESCE(at.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub), COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub)), 0) as transit,
-          COALESCE(at.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub), COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub)), 0) as total,
-          at.ExtraKM as extra,
+          ROUND(COALESCE(at.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub), COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub)), 0)) as transit,
+          12 as total,
+          CASE 
+            WHEN COALESCE(at.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub), COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub)), 0) > 12 
+            THEN ROUND(COALESCE(at.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub), COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub)), 0) - 12)
+            ELSE 0 
+          END as extra,
           COALESCE(at.TotalDutyHours, TIMESTAMPDIFF(HOUR, COALESCE(at.InTimeByCust, at.VehicleEntryInHub, at.VehicleReportingAtHub), COALESCE(at.OutTimeFrom, at.OutTimeFromHub, at.VehicleReturnAtHub)), 0) as working,
           at.OpeningKM as startKm,
           at.ClosingKM as endKm,
@@ -244,7 +252,8 @@ export const invoiceService = {
           at.ExtraKM as extraKm,
           at.TripNo as orderNumber,
           at.TripNo as tripLogNumber,
-          COALESCE(at.TotalFreight, cc.fixed_rate, 0) as FreightFix,
+          COALESCE(at.VFreightFix, at.TotalFreight, cc.fixed_rate, 0) as FreightFix,
+          COALESCE(at.VFreightVariable, cc.additional_rate_per_km, 0) as FreightVariable,
           COALESCE(at.LoadingCharges, 0) as LoadingCharges,
           COALESCE(at.UnloadingCharges, 0) as UnloadingCharges,
           COALESCE(at.ParkingCharges, 0) as ParkingCharges,
@@ -436,16 +445,16 @@ export const invoiceService = {
         const adhocMap = new Map();
         
         const [commercialRows]: any = await db.query(
-          "SELECT * FROM customer_commercial WHERE (customer_id = ? OR ? IS NULL) AND (project_id = ? OR ? IS NULL) AND type_of_vehicle_placement = 'Adhoc'",
+          "SELECT * FROM customer_commercial WHERE (customer_id = ? OR customer_id IS NULL OR ? IS NULL) AND (project_id = ? OR project_id IS NULL OR ? IS NULL)",
           [customerId, customerId, projectId, projectId]
         );
         
         misRows.forEach((row: any) => {
           const comm = commercialRows.find((c: any) => c.type_of_vehicle === row.vehicleType) || commercialRows[0] || {};
-          const extraKmRate = Number(row.cc_additional_rate_per_km || comm.additional_rate_per_km || 0);
-          const fixRate = Number(row.cc_fixed_rate || comm.fixed_rate || 0);
+          const extraKmRate = Number(row.cc_additional_rate_per_km || comm.additional_rate_per_km || row.FreightVariable || 0);
+          const fixRate = Number(row.cc_fixed_rate || comm.fixed_rate || row.FreightFix || 0);
 
-          const loc = row.ourBranch || row.ourState || row.consignorName || 'Unknown';
+          const loc = row.consignorName || 'Unknown';
           if (!adhocMap.has(loc)) {
             adhocMap.set(loc, {
               sNo: adhocMap.size + 1,

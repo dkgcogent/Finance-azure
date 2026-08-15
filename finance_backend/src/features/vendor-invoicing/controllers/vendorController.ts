@@ -51,7 +51,7 @@ export const getVendors = async (req: Request, res: Response) => {
 
 export const getVendorTrips = async (req: Request, res: Response) => {
   try {
-    const { vendorName, startDate, endDate, tripType } = req.query;
+    const { vendorName, startDate, endDate, tripType, customerId, projectId, locationId } = req.query;
 
     if (!vendorName || !startDate || !endDate) {
       return res.status(400).json({ error: 'vendorName, startDate, and endDate are required' });
@@ -71,39 +71,65 @@ export const getVendorTrips = async (req: Request, res: Response) => {
     // Fetch commercial rates
     const placementType = tripType === 'adhoc' ? 'Adhoc' : 'Fixed';
     const [commercialRows]: any = await pool.query(
-      'SELECT * FROM vendor_commercial WHERE vendor_name = ? AND type_of_vehicle_placement = ? LIMIT 1',
-      [actualVendorName, placementType]
+      `SELECT * FROM vendor_commercial 
+       WHERE (vendor_name = ? OR vendor_id = ?) 
+       ORDER BY (CASE WHEN LOWER(type_of_vehicle_placement) = LOWER(?) THEN 0 ELSE 1 END), id DESC 
+       LIMIT 1`,
+      [actualVendorName, vendorName, placementType]
     );
     const commercialRates = commercialRows.length > 0 ? commercialRows[0] : null;
+
+    const custIdVal = customerId ? String(customerId) : null;
+    const projIdVal = projectId ? String(projectId) : null;
 
     if (tripType === 'adhoc') {
       // Fetch all trips for this vendor in the date range
       const [trips]: any = await pool.query(`
         SELECT 
-          Location, CustomerSite, VendorName, VehicleNumber, VehicleType, VehicleOwnershipType, TripType, DriverType, 
-          ArrivalTimeAtHub, OutTimeFromHub, OpeningKM, ClosingKM, ExtraKM, ExtraKMCost, VFreightFix, DCMCharges, TotalFreight 
+          DATE_FORMAT(COALESCE(ServiceDate, TransactionDate), '%d/%m/%Y') as date,
+          Location, CustomerSite, CustSite, VendorName, VehicleNumber, VehicleType, VehicleOwnershipType, TripType, DriverType, 
+          COALESCE(ArrivalTimeAtHub, InTimeByCust, VehicleReportingAtHub, VehicleEntryInHub) as ArrivalTimeAtHub, 
+          COALESCE(OutTimeFromHub, VehicleOutFromHubFinal, ReturnReportingTime, OutTimeFrom, VehicleReturnAtHub, VehicleOutFromHubForDelivery) as OutTimeFromHub, 
+          OpeningKM, ClosingKM, ExtraKM, ExtraKMCost, VFreightFix, DCMCharges, TotalFreight 
         FROM adhoc_transactions 
-        WHERE VendorName = ? 
-        AND TransactionDate >= ? AND TransactionDate <= ?
-      `, [actualVendorName, startDate, endDate]);
+        WHERE (VendorName = ? OR VendorID = ?) 
+        AND COALESCE(ServiceDate, TransactionDate) BETWEEN ? AND ?
+        AND (? IS NULL OR ? = '' OR CustomerID = ?)
+        AND (? IS NULL OR ? = '' OR ProjectID = ?)
+      `, [actualVendorName, vendorName, startDate, endDate, custIdVal, custIdVal, custIdVal, projIdVal, projIdVal, projIdVal]);
 
       // Calculate Annexure Data
       const annexureData = trips.map((t: any, index: number) => {
+        const rawHub = t.CustomerSite || t.CustSite || t.Location || '';
+        const cleanHub = rawHub.replace(/^[A-Z]{2}\s*-\s*/i, '').replace(/\s*\(Emp:.*?\)/gi, '').trim();
+        const locMatch = rawHub.match(/^([A-Z]{2})\s*-\s*/i);
+        const cleanLoc = locMatch ? locMatch[1].toUpperCase() : (t.Location || 'UP');
+
         return {
           id: index + 1,
-          location: t.Location || t.CustomerSite || '',
-          vendor: t.VendorName || '',
-          vehicleNumber: t.VehicleNumber || '',
-          vehicleType: t.VehicleType || '',
-          vehicleOwnership: t.VehicleOwnershipType || 'Adhoc',
-          tripType: t.TripType || 'Adhoc',
-          driverType: t.DriverType || '',
+          date: t.date || '',
+          hub: cleanHub,
+          loc: cleanLoc,
+          vendor: 'COGENT LOGISTICS PRIVATE LIMITED',
+          vehNo: t.VehicleNumber || '',
+          vehType: t.VehicleType || '',
+          parentVeh: t.VehicleNumber || '',
+          ownType: 'Adhoc',
+          driverType: t.DriverType || 'Driver',
           inTime: t.ArrivalTimeAtHub || '',
           outTime: t.OutTimeFromHub || '',
+          startOdo: t.OpeningKM || 0,
+          endOdo: t.ClosingKM || 0,
+          dist: (t.ClosingKM || 0) - (t.OpeningKM || 0),
+          location: cleanLoc,
+          vehicleNumber: t.VehicleNumber || '',
+          vehicleType: t.VehicleType || '',
+          vehicleOwnership: 'Adhoc',
+          tripType: t.TripType || 'Adhoc',
           startOdometer: t.OpeningKM || 0,
           endOdometer: t.ClosingKM || 0,
           distance: (t.ClosingKM || 0) - (t.OpeningKM || 0),
-          extraKm: t.ExtraKM || 0,
+          extraKm: Math.max(0, ((t.ClosingKM || 0) - (t.OpeningKM || 0)) - 100),
           extraKmRate: t.ExtraKM && t.ExtraKMCost ? (t.ExtraKMCost / t.ExtraKM).toFixed(2) : 0,
           fixCost: t.VFreightFix || 0
         };
@@ -112,14 +138,23 @@ export const getVendorTrips = async (req: Request, res: Response) => {
       // Calculate MIS Data
       const misGroups: any = {};
       trips.forEach((t: any) => {
-        const loc = t.Location || t.CustomerSite || 'Unknown';
+        const rawHub = t.CustomerSite || t.CustSite || t.Location || 'Unknown';
+        const cleanHub = rawHub.replace(/^[A-Z]{2}\s*-\s*/i, '').replace(/\s*\(Emp:.*?\)/gi, '').trim();
+        const loc = cleanHub || 'Unknown';
+
+        const dist = (parseFloat(t.ClosingKM) || 0) - (parseFloat(t.OpeningKM) || 0);
+        const tripExtraKm = Math.max(0, dist - 100);
+
         if (!misGroups[loc]) {
+          const fixedRateVal = commercialRates?.fixed_rate ? parseFloat(commercialRates.fixed_rate) : (t.VFreightFix ? parseFloat(t.VFreightFix) : 0);
+          const addKmRateVal = commercialRates?.additional_rate_per_km ? parseFloat(commercialRates.additional_rate_per_km) : (t.ExtraKMCost && t.ExtraKM ? parseFloat(t.ExtraKMCost) / parseFloat(t.ExtraKM) : 0);
+
           misGroups[loc] = {
             location: loc,
             noOfTrips: 0,
-            rates: t.VFreightFix || (commercialRates?.fixed_rate ? parseFloat(commercialRates.fixed_rate) : 0),
+            rates: fixedRateVal,
             extraKm: 0,
-            extraKmRate: 0,
+            extraKmRate: addKmRateVal,
             extraHrsRate: commercialRates?.over_time_charges ? parseFloat(commercialRates.over_time_charges) : 63,
             fixedCost: 0,
             extraKmCost: 0,
@@ -129,10 +164,8 @@ export const getVendorTrips = async (req: Request, res: Response) => {
         }
         
         misGroups[loc].noOfTrips += 1;
-        misGroups[loc].rates = Math.max(misGroups[loc].rates, t.VFreightFix || (commercialRates?.fixed_rate ? parseFloat(commercialRates.fixed_rate) : 0));
-        misGroups[loc].extraKm += (t.ExtraKM || 0);
-        misGroups[loc].extraKmRate = t.ExtraKM && t.ExtraKMCost ? Math.max(misGroups[loc].extraKmRate, (t.ExtraKMCost / t.ExtraKM)) : misGroups[loc].extraKmRate;
-        misGroups[loc].dcmCharges += (t.DCMCharges || 0);
+        misGroups[loc].extraKm += tripExtraKm;
+        misGroups[loc].dcmCharges += (parseFloat(t.DCMCharges) || 0);
       });
       
       const misData = Object.values(misGroups).map((m: any, idx: number) => {
@@ -152,35 +185,44 @@ export const getVendorTrips = async (req: Request, res: Response) => {
 
       res.json({
         misData,
-        annexureData
+        annexureData,
+        vendorInfo
       });
     } else if (tripType === 'fixed') {
       // Fetch all trips for this vendor in the date range
       const [trips]: any = await pool.query(`
         SELECT 
-          TransactionDate, Location, CustomerSite, VendorName, VehicleNumber, VehicleType, TripType, 
+          DATE_FORMAT(COALESCE(ServiceDate, TransactionDate), '%d/%m/%Y') as date,
+          Location, CustomerSite, VendorName, VehicleNumber, VehicleType, TripType, 
           'Driver' as DriverType,
           COALESCE(ArrivalTimeAtHub, InTimeByCust, VehicleEntryInHub, VehicleReportingAtHub) as ArrivalTimeAtHub, 
           COALESCE(OutTimeFromHub, VehicleReturnAtHub, ReturnReportingTime, OutTimeFrom) as OutTimeFromHub, 
           OpeningKM, ClosingKM, VFreightFix, TotalFreight, TollExpenses, ParkingCharges
         FROM fixed_transactions 
-        WHERE VendorName = ? 
-        AND TransactionDate >= ? AND TransactionDate <= ?
-      `, [actualVendorName, startDate, endDate]);
+        WHERE (VendorName = ? OR VendorID = ?) 
+        AND COALESCE(ServiceDate, TransactionDate) BETWEEN ? AND ?
+        AND (? IS NULL OR ? = '' OR CustomerID = ?)
+        AND (? IS NULL OR ? = '' OR ProjectID = ?)
+      `, [actualVendorName, vendorName, startDate, endDate, custIdVal, custIdVal, custIdVal, projIdVal, projIdVal, projIdVal]);
 
       // Calculate Annexure Data (Detailed Logs)
       const annexureData = trips.map((t: any, index: number) => {
+        const rawHub = t.CustomerSite || t.Location || '';
+        const cleanHub = rawHub.replace(/^[A-Z]{2}\s*-\s*/i, '').replace(/\s*\(Emp:.*?\)/gi, '').trim();
+        const locMatch = rawHub.match(/^([A-Z]{2})\s*-\s*/i);
+        const cleanLoc = locMatch ? locMatch[1].toUpperCase() : (t.Location || 'UP');
+
         return {
           id: index + 1,
-          date: t.TransactionDate ? new Date(t.TransactionDate).toLocaleDateString('en-GB') : '',
-          hub: t.CustomerSite || '',
-          loc: t.Location || t.CustomerSite || '',
-          vendor: t.VendorName || '',
+          date: t.date || '',
+          hub: cleanHub,
+          loc: cleanLoc,
+          vendor: 'COGENT LOGISTICS PRIVATE LIMITED',
           vehNo: t.VehicleNumber || '',
           vehType: t.VehicleType || '',
           parentVeh: t.VehicleNumber || '',
           ownType: 'Fixed',
-          driverType: t.DriverType || '',
+          driverType: t.DriverType || 'Driver',
           inTime: t.ArrivalTimeAtHub || '',
           outTime: t.OutTimeFromHub || '',
           startOdo: t.OpeningKM || 0,
@@ -201,11 +243,14 @@ export const getVendorTrips = async (req: Request, res: Response) => {
           const extKmRate = commercialRates?.additional_rate_per_km ? parseFloat(commercialRates.additional_rate_per_km) : 7.25;
           const dynFuel = 0.50;
 
+          const rawHubFixed = t.CustomerSite || t.Location || '';
+          const cleanHubFixed = rawHubFixed.replace(/^[A-Z]{2}\s*-\s*/i, '').replace(/\s*\(Emp:.*?\)/gi, '').trim();
+
           misGroups[veh] = {
             vehNo: veh,
             vehType: t.VehicleType || '',
             mode: 'UP Large LM',
-            loc: t.Location || t.CustomerSite || '',
+            loc: cleanHubFixed || t.Location || '',
             vertical: 'LM',
             hrs: commercialRates?.hours ? parseFloat(commercialRates.hours) : 12,
             fixedKms: fixedKms,
@@ -254,6 +299,8 @@ export const getVendorTrips = async (req: Request, res: Response) => {
         return {
           id: idx + 1,
           ...m,
+          perDayCost: Number(m.perDayCost).toFixed(2),
+          perDayKm: Number(m.perDayKm).toFixed(2),
           extKm: Number(extKm).toFixed(2),
           extKmCharge: Number(extKmCharge).toFixed(2),
           actualDeployed: Number(actualDeployed).toFixed(2),
