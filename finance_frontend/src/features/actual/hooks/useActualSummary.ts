@@ -5,6 +5,7 @@ export const useActualSummary = (financialYear: string) => {
   return useQuery({
     queryKey: ['ActualSummary', financialYear],
     queryFn: () => getActualSummary(financialYear),
-    staleTime: 5 * 60 * 1000, // 5 minutes
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 };

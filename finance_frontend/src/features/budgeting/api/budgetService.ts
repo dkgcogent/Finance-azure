@@ -23,9 +23,13 @@ export const getBudgetSummary = async (financialYear: string): Promise<BudgetSum
     return {
       name: h,
       "Gross Margin %": resultRows["Gross Margin %Age"]?.[i] || 0,
+      "Gross Margin Value": resultRows["Gross Margin"]?.[i] || 0,
       "Corporate Exp %": resultRows["Corporate Expenses % Age"]?.[i] || 0,
+      "Corporate Exp Value": resultRows["Total Corporate Expenses"]?.[i] || 0,
       "EBITA %": resultRows["EBITA %Age"]?.[i] || 0,
-      "NP %": resultRows["NP % Age"]?.[i] || 0
+      "EBITA Value": resultRows["EBITA"]?.[i] || 0,
+      "NP %": resultRows["NP % Age"]?.[i] || 0,
+      "NP Value": resultRows["NP"]?.[i] || 0
     };
   });
 

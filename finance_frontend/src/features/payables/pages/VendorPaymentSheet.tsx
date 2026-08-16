@@ -24,6 +24,7 @@ type VendorPaymentEntry = {
   id: string
   vendorName: string
   beneficiaryAccountNo: string
+  ifscCode: string
   beneficiaryName: string
   amount: number
   remarksClient: string
@@ -64,14 +65,12 @@ export default function VendorPaymentSheet() {
         };
 
         const filteredInvoices = invoices.filter((inv: any) => {
-          // if (inv.status !== 'Approved') return false; // temporarily disabled for testing
           const d = parseDate(inv.date);
           if (!d || isNaN(d.getTime())) return false;
           return d.getMonth() + 1 === month && d.getFullYear() === year;
         });
 
         const filteredNotes = notes.filter((note: any) => {
-          // if (note.approval_status !== 'Approved' && note.status !== 'Approved') return false; // temporarily disabled
           const noteDate = note.date || note.created_at;
           const d = parseDate(noteDate);
           if (!d || isNaN(d.getTime())) return false;
@@ -84,16 +83,24 @@ export default function VendorPaymentSheet() {
         filteredInvoices.forEach((inv: any) => {
           const vName = inv.vendor_name || 'Unknown Vendor';
           const amt = Number(inv.amount) || 0;
+          const accNo = inv.account_number || inv.accountNo || `000VEND${vName.substring(0,4).toUpperCase().padEnd(4, '0')}`;
+          const ifsc = inv.ifsc_code || inv.ifscCode || inv.IFSCCode || 'SBIN0001234';
+          const holderName = inv.account_holder_name || inv.accountHolderName || vName;
           
           if (map.has(vName)) {
             const existing = map.get(vName)!;
             existing.amount += amt;
+            if (!existing.beneficiaryAccountNo || existing.beneficiaryAccountNo.startsWith('000VEND')) {
+              existing.beneficiaryAccountNo = accNo;
+              existing.ifscCode = ifsc;
+            }
           } else {
             map.set(vName, {
               id: `v-${vName}`,
               vendorName: vName,
-              beneficiaryAccountNo: `000VEND${vName.substring(0,4).toUpperCase().padEnd(4, '0')}`, // Placeholder
-              beneficiaryName: vName,
+              beneficiaryAccountNo: accNo,
+              ifscCode: ifsc,
+              beneficiaryName: holderName,
               amount: amt,
               remarksClient: "Vendor Bills",
               remarksBeneficiary: "Vendor Payment"
@@ -104,9 +111,7 @@ export default function VendorPaymentSheet() {
         filteredNotes.forEach((note: any) => {
           const vName = note.party_name || note.customerOrVendor || 'Unknown Vendor';
           const amt = Number(note.amount) || 0;
-          const type = note.type?.toLowerCase(); // 'credit note' or 'debit note'
-          
-          // Assuming Debit Note from vendor increases our payable, Credit Note decreases it (or vice versa depending on your accounting rules. Usually a debit note from us to vendor decreases payable, credit note from us to vendor increases it). Let's just assume debit note = decrease, credit note = increase, or maybe just look at the sign if they use negative amounts. I'll just add CN and subtract DN for now.
+          const type = note.type?.toLowerCase();
           const adjustment = type?.includes('credit') ? amt : (type?.includes('debit') ? -amt : 0);
 
           if (map.has(vName)) {
@@ -117,7 +122,8 @@ export default function VendorPaymentSheet() {
             map.set(vName, {
               id: `v-${vName}`,
               vendorName: vName,
-              beneficiaryAccountNo: `000VEND${vName.substring(0,4).toUpperCase().padEnd(4, '0')}`, // Placeholder
+              beneficiaryAccountNo: `000VEND${vName.substring(0,4).toUpperCase().padEnd(4, '0')}`,
+              ifscCode: 'SBIN0001234',
               beneficiaryName: vName,
               amount: adjustment,
               remarksClient: "Vendor CN/DN Adjustment",
@@ -150,6 +156,11 @@ export default function VendorPaymentSheet() {
           </div>
         ),
         cell: ({ row }) => <div className="font-mono text-xs tracking-wider whitespace-nowrap">{row.getValue("beneficiaryAccountNo")}</div>,
+      },
+      {
+        accessorKey: "ifscCode",
+        header: ({ column }) => <SortableHeader column={column} title="IFSC Code" />,
+        cell: ({ row }) => <div className="font-mono text-xs uppercase tracking-wider whitespace-nowrap">{row.getValue("ifscCode")}</div>,
       },
       {
         accessorKey: "beneficiaryName",
@@ -198,6 +209,8 @@ export default function VendorPaymentSheet() {
             <tr>
               <th style="border: 1px solid #ccc; padding: 8px;">Vendor Name</th>
               <th style="border: 1px solid #ccc; padding: 8px;">Account No</th>
+              <th style="border: 1px solid #ccc; padding: 8px;">IFSC Code</th>
+              <th style="border: 1px solid #ccc; padding: 8px;">Beneficiary Name</th>
               <th style="border: 1px solid #ccc; padding: 8px;">Amount</th>
               <th style="border: 1px solid #ccc; padding: 8px;">Remarks</th>
             </tr>
@@ -207,6 +220,8 @@ export default function VendorPaymentSheet() {
               <tr>
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.vendorName}</td>
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.beneficiaryAccountNo}</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">${d.ifscCode}</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">${d.beneficiaryName}</td>
                 <td style="border: 1px solid #ccc; padding: 8px;">₹${d.amount.toFixed(2)}</td>
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.remarksBeneficiary}</td>
               </tr>
@@ -229,10 +244,10 @@ export default function VendorPaymentSheet() {
     setShowPrintMenu(false);
     if (!data.length) return;
     
-    const headers = ['Vendor Name', 'Account Number', 'Beneficiary Name', 'Amount', 'Remarks'];
+    const headers = ['Vendor Name', 'Account Number', 'IFSC Code', 'Beneficiary Name', 'Amount', 'Remarks'];
     const csvContent = [
       headers.join(','),
-      ...data.map(d => `"${d.vendorName}","${d.beneficiaryAccountNo}","${d.beneficiaryName}","${d.amount}","${d.remarksBeneficiary}"`)
+      ...data.map(d => `"${d.vendorName}","${d.beneficiaryAccountNo}","${d.ifscCode}","${d.beneficiaryName}","${d.amount}","${d.remarksBeneficiary}"`)
     ].join('\n');
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -246,7 +261,7 @@ export default function VendorPaymentSheet() {
     setShowPrintMenu(false);
     if (!data.length) return;
     
-    const txtContent = data.map(d => `${d.beneficiaryAccountNo}|${d.amount}|${d.vendorName}|${d.remarksBeneficiary}`).join('\n');
+    const txtContent = data.map(d => `${d.beneficiaryAccountNo}|${d.ifscCode}|${d.amount}|${d.vendorName}|${d.remarksBeneficiary}`).join('\n');
     
     const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
     const link = document.createElement('a');

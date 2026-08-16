@@ -8,6 +8,13 @@ export const useVendors = () => {
   });
 };
 
+export const useNextVendorInvoiceNumber = () => {
+  return useQuery({
+    queryKey: ['nextVendorInvoiceNumber'],
+    queryFn: () => vendorInvoiceService.getNextInvoiceNumber(),
+  });
+};
+
 export const useVendorTrips = (vendorName: string, startDate: string, endDate: string, tripType: string, customerId?: string, projectId?: string, locationId?: string) => {
   return useQuery({
     queryKey: ['vendorTrips', vendorName, startDate, endDate, tripType, customerId, projectId, locationId],

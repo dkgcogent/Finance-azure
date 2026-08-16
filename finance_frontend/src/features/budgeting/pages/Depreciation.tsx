@@ -7,10 +7,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Modal } from "@/components/ui/modal"
-import { Plus, Save, Trash2, Download } from "lucide-react"
-import { BudgetNav } from "../components/BudgetNav"
+import { Plus, Save, Trash2, Download, Loader2 } from "lucide-react"
 
-const YEARS = ['2025', '2026', '2027', '2028', '2029', '2030', '2031', '2032', '2033', '2034', '2035'];
+type MonthKey = 'apr' | 'may' | 'jun' | 'jul' | 'aug' | 'sep' | 'oct' | 'nov' | 'dec' | 'jan' | 'feb' | 'mar';
+
+const MONTHS: MonthKey[] = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
 const YEAR_OPTIONS = Array.from({ length: 18 }, (_, i) => `${2023 + i}-${2024 + i}`);
 
 const CATEGORY_OPTIONS = [
@@ -34,7 +35,7 @@ interface DepreciationRow {
   purchaseValue: string;
   openingDate: string;
   wdvOpeningValue: string;
-  [key: string]: string | null; // For dynamic years
+  [key: string]: string | null;
 }
 
 const parseFormattedNumber = (val: string | null): number => {
@@ -47,11 +48,23 @@ const formatIndianNumber = (num: number): string => {
   return num.toLocaleString('en-IN');
 }
 
-const getEmptyYears = () => {
-  const yearsObj: Record<string, string | null> = {};
-  YEARS.forEach(y => { yearsObj[y] = null; });
-  return yearsObj;
+const getEmptyMonths = () => {
+  const monthsObj: Record<string, string | null> = {};
+  MONTHS.forEach(m => { monthsObj[m] = null; });
+  return monthsObj;
 }
+
+const getMonthHeaders = (yearRange: string) => {
+  const [startYearStr, endYearStr] = yearRange.split('-');
+  if (!startYearStr || !endYearStr) return MONTHS.map(m => m.charAt(0).toUpperCase() + m.slice(1));
+  const startYr = startYearStr.substring(2);
+  const endYr = endYearStr.substring(2);
+
+  return [
+    `Apr-${startYr}`, `May-${startYr}`, `Jun-${startYr}`, `Jul-${startYr}`, `Aug-${startYr}`, `Sep-${startYr}`, `Oct-${startYr}`, `Nov-${startYr}`, `Dec-${startYr}`,
+    `Jan-${endYr}`, `Feb-${endYr}`, `Mar-${endYr}`
+  ];
+};
 
 const INITIAL_YEAR = "2026-2027";
 
@@ -63,6 +76,8 @@ export default function Depreciation() {
 
   const { data: serverAvailableYears } = useAvailableYearsQuery();
   const availableYears = serverAvailableYears && serverAvailableYears.length > 0 ? serverAvailableYears : [selectedYear];
+
+  const dynamicHeaders = useMemo(() => getMonthHeaders(selectedYear), [selectedYear]);
 
   useEffect(() => {
     if (!serverData) return;
@@ -79,11 +94,11 @@ export default function Depreciation() {
           openingDate: row.openingDate || "",
           wdvOpeningValue: row.wdvOpeningValue ? formatIndianNumber(row.wdvOpeningValue) : "",
         };
-        YEARS.forEach(y => {
-          if (row[y] != null && parseFloat(row[y]) > 0) {
-            mappedRow[y] = formatIndianNumber(parseFloat(row[y]));
+        MONTHS.forEach(m => {
+          if (row[m] != null && parseFloat(row[m]) > 0) {
+            mappedRow[m] = formatIndianNumber(parseFloat(row[m]));
           } else {
-            mappedRow[y] = null;
+            mappedRow[m] = null;
           }
         });
         return mappedRow;
@@ -101,9 +116,9 @@ export default function Depreciation() {
 
   // Column resizing state
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    category: 120, assetName: 120, depPercentage: 80, purchaseDate: 120, purchaseValue: 120, openingDate: 120, wdvOpeningValue: 130,
-    ...YEARS.reduce((acc, y) => ({ ...acc, [y]: 80 }), {}),
-    total: 100, action: 40
+    category: 120, assetName: 130, depPercentage: 80, purchaseDate: 120, purchaseValue: 120, openingDate: 120, wdvOpeningValue: 130,
+    ...MONTHS.reduce((acc, m) => ({ ...acc, [m]: 85 }), {}),
+    total: 110, action: 40
   });
 
   const startResize = (e: React.MouseEvent, colKey: string) => {
@@ -152,7 +167,7 @@ export default function Depreciation() {
       purchaseValue: "",
       openingDate: "",
       wdvOpeningValue: "",
-      ...getEmptyYears()
+      ...getEmptyMonths()
     };
     setData([...data, newRow]);
     setSelectedYear(newRowYear);
@@ -171,7 +186,7 @@ export default function Depreciation() {
 
       const row = { ...newData[rowIndex] };
 
-      if (YEARS.includes(field) || field === 'purchaseValue' || field === 'wdvOpeningValue' || field === 'depPercentage') {
+      if (MONTHS.includes(field as MonthKey) || field === 'purchaseValue' || field === 'wdvOpeningValue' || field === 'depPercentage') {
         const sanitizedValue = value.replace(/[^0-9.,]/g, '');
         row[field] = sanitizedValue;
       } else {
@@ -195,21 +210,20 @@ export default function Depreciation() {
         row[field] = field === 'depPercentage' ? val.toString() : formatIndianNumber(val);
       }
 
-      // Auto-calculate years if WDV or Dep% changes
+      // Auto-calculate months if WDV or Dep% changes
       if (field === 'wdvOpeningValue' || field === 'depPercentage') {
         const rate = parseFormattedNumber(row.depPercentage) / 100;
-        let currentWdv = parseFormattedNumber(row.wdvOpeningValue);
+        const currentWdv = parseFormattedNumber(row.wdvOpeningValue);
         
         if (rate > 0 && currentWdv > 0) {
-          YEARS.forEach(y => {
-            const annualDep = currentWdv * rate;
-            const monthlyDep = annualDep / 12;
-            row[y] = formatIndianNumber(Math.round(monthlyDep));
-            currentWdv -= annualDep;
+          const annualDep = currentWdv * rate;
+          const monthlyDep = annualDep / 12;
+          MONTHS.forEach(m => {
+            row[m] = formatIndianNumber(Math.round(monthlyDep));
           });
         } else {
-          YEARS.forEach(y => {
-            row[y] = "";
+          MONTHS.forEach(m => {
+            row[m] = "";
           });
         }
       }
@@ -233,8 +247,8 @@ export default function Depreciation() {
             openingDate: row.openingDate,
             wdvOpeningValue: parseFormattedNumber(row.wdvOpeningValue)
           };
-          YEARS.forEach(y => {
-            rowData[y] = parseFormattedNumber(row[y]);
+          MONTHS.forEach(m => {
+            rowData[m] = parseFormattedNumber(row[m]);
           });
           return rowData;
         })
@@ -252,26 +266,22 @@ export default function Depreciation() {
 
   const totals = useMemo(() => {
     const acc: Record<string, number> = { purchaseValue: 0, wdvOpeningValue: 0, total: 0 };
-    YEARS.forEach(y => acc[y] = 0);
+    MONTHS.forEach(m => acc[m] = 0);
 
     currentYearData.forEach(row => {
       acc.purchaseValue += parseFormattedNumber(row.purchaseValue);
       acc.wdvOpeningValue += parseFormattedNumber(row.wdvOpeningValue);
       
       let rowTotal = 0;
-      YEARS.forEach(y => { 
-        const val = parseFormattedNumber(row[y]);
-        acc[y] += val; 
+      MONTHS.forEach(m => { 
+        const val = parseFormattedNumber(row[m]);
+        acc[m] += val; 
         rowTotal += val;
       });
       acc.total += rowTotal;
     });
     return acc;
   }, [currentYearData]);
-
-  // bg-[#e6f2ff] = light blue for dropdown
-  // bg-[#ffe6e6] = light pink for manual
-  // bg-[#ffff99] = yellow for calculated
 
   return (
     <div className="flex-1 space-y-6 pb-8">
@@ -288,7 +298,7 @@ export default function Depreciation() {
             import('xlsx').then(XLSX => {
               const table = document.getElementById('export-table');
               if (table) {
-                const clone = table.cloneNode(true);
+                const clone = table.cloneNode(true) as Element;
                 const inputs = clone.querySelectorAll('input');
                 inputs.forEach(input => {
                   const val = input.value;
@@ -324,167 +334,188 @@ export default function Depreciation() {
 
       <Card className="overflow-hidden">
         <CardContent className="p-0">
-          <div className="overflow-x-auto no-scrollbar">
-            <Table id="export-table" className="border-collapse w-max min-w-full" style={{ tableLayout: 'fixed' }}>
-              <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.category, minWidth: colWidths.category }}>
-                    Category
-                    <Resizer colKey="category" />
-                  </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.assetName, minWidth: colWidths.assetName }}>
-                    Asset
-                    <Resizer colKey="assetName" />
-                  </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.depPercentage, minWidth: colWidths.depPercentage }}>
-                    Dep % age
-                    <Resizer colKey="depPercentage" />
-                  </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.purchaseDate, minWidth: colWidths.purchaseDate }}>
-                    Date of Purchase
-                    <Resizer colKey="purchaseDate" />
-                  </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.purchaseValue, minWidth: colWidths.purchaseValue }}>
-                    Purchase Value
-                    <Resizer colKey="purchaseValue" />
-                  </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.openingDate, minWidth: colWidths.openingDate }}>
-                    Opening Date
-                    <Resizer colKey="openingDate" />
-                  </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.wdvOpeningValue, minWidth: colWidths.wdvOpeningValue }}>
-                    WDV - Opening Value
-                    <Resizer colKey="wdvOpeningValue" />
-                  </TableHead>
-                  {YEARS.map(y => (
-                    <TableHead key={y} className="relative border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs font-bold text-black dark:text-white h-10 px-0.5 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths[y], minWidth: colWidths[y] }}>
-                      {y}
-                      <Resizer colKey={y} />
+          {isQueryLoading ? (
+            <div className="flex flex-col items-center justify-center p-16 space-y-4 text-muted-foreground">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <p className="text-sm font-medium">Loading depreciation data...</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto no-scrollbar">
+              <Table id="export-table" className="border-collapse w-max min-w-full" style={{ tableLayout: 'fixed' }}>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.category, minWidth: colWidths.category }}>
+                      Category
+                      <Resizer colKey="category" />
                     </TableHead>
-                  ))}
-                  <TableHead className="px-0 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.action, minWidth: colWidths.action }}></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentYearData.map((row) => (
-                  <TableRow key={row.id} className="hover:bg-muted/30 group">
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                      <select
-                        value={row.category}
-                        onChange={(e) => handleCellChange(row.id, 'category', e.target.value)}
-                        className="w-full h-full bg-[#e6f2ff] dark:bg-blue-900/40 border-none rounded-none px-2 text-xs shadow-none outline-none focus-visible:ring-1"
-                      >
-                        {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                      </select>
-                    </TableCell>
+                    <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.assetName, minWidth: colWidths.assetName }}>
+                      Asset
+                      <Resizer colKey="assetName" />
+                    </TableHead>
+                    <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.depPercentage, minWidth: colWidths.depPercentage }}>
+                      Dep % age
+                      <Resizer colKey="depPercentage" />
+                    </TableHead>
+                    <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.purchaseDate, minWidth: colWidths.purchaseDate }}>
+                      Date of Purchase
+                      <Resizer colKey="purchaseDate" />
+                    </TableHead>
+                    <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.purchaseValue, minWidth: colWidths.purchaseValue }}>
+                      Purchase Value
+                      <Resizer colKey="purchaseValue" />
+                    </TableHead>
+                    <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.openingDate, minWidth: colWidths.openingDate }}>
+                      Opening Date
+                      <Resizer colKey="openingDate" />
+                    </TableHead>
+                    <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.wdvOpeningValue, minWidth: colWidths.wdvOpeningValue }}>
+                      WDV - Opening Value
+                      <Resizer colKey="wdvOpeningValue" />
+                    </TableHead>
+                    {dynamicHeaders.map((header, idx) => (
+                      <TableHead key={idx} className="relative border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs font-bold text-black dark:text-white h-10 px-0.5 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths[MONTHS[idx]], minWidth: colWidths[MONTHS[idx]] }}>
+                        {header}
+                        <Resizer colKey={MONTHS[idx]} />
+                      </TableHead>
+                    ))}
+                    <TableHead className="relative text-right text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.total, minWidth: colWidths.total }}>
+                      Total
+                      <Resizer colKey="total" />
+                    </TableHead>
+                    <TableHead className="px-0 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.action, minWidth: colWidths.action }}></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {currentYearData.map((row) => {
+                    const rowTotal = MONTHS.reduce((sum, m) => sum + parseFormattedNumber(row[m]), 0);
+                    return (
+                      <TableRow key={row.id} className="hover:bg-muted/30 group">
+                        <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                          <select
+                            value={row.category}
+                            onChange={(e) => handleCellChange(row.id, 'category', e.target.value)}
+                            className="w-full h-full bg-[#e6f2ff] dark:bg-blue-900/40 border-none rounded-none px-2 text-xs shadow-none outline-none focus-visible:ring-1"
+                          >
+                            {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </TableCell>
 
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                      <Input
-                        value={row.assetName}
-                        onChange={(e) => handleCellChange(row.id, 'assetName', e.target.value)}
-                        className="w-full h-full bg-[#ffe6e6] dark:bg-rose-900/20 border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1 text-black dark:text-white"
-                      />
-                    </TableCell>
+                        <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                          <Input
+                            value={row.assetName}
+                            onChange={(e) => handleCellChange(row.id, 'assetName', e.target.value)}
+                            className="w-full h-full bg-[#ffe6e6] dark:bg-rose-900/20 border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1 text-black dark:text-white"
+                          />
+                        </TableCell>
 
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                      <Input
-                        value={row.depPercentage}
-                        onChange={(e) => handleCellChange(row.id, 'depPercentage', e.target.value)}
-                        onBlur={() => handleFormatCurrency(row.id, 'depPercentage')}
-                        className="w-full h-full bg-[#ffe6e6] dark:bg-rose-900/20 text-center border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1 text-black dark:text-white"
-                      />
-                    </TableCell>
+                        <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                          <Input
+                            value={row.depPercentage}
+                            onChange={(e) => handleCellChange(row.id, 'depPercentage', e.target.value)}
+                            onBlur={() => handleFormatCurrency(row.id, 'depPercentage')}
+                            className="w-full h-full bg-[#ffe6e6] dark:bg-rose-900/20 text-center border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1 text-black dark:text-white"
+                          />
+                        </TableCell>
 
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                      <Input
-                        value={row.purchaseDate}
-                        placeholder="DD-MM-YYYY"
-                        onChange={(e) => handleCellChange(row.id, 'purchaseDate', e.target.value)}
-                        className="w-full h-full bg-[#ffe6e6] dark:bg-rose-900/20 text-center border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1 text-black dark:text-white"
-                      />
-                    </TableCell>
+                        <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                          <Input
+                            value={row.purchaseDate}
+                            placeholder="DD-MM-YYYY"
+                            onChange={(e) => handleCellChange(row.id, 'purchaseDate', e.target.value)}
+                            className="w-full h-full bg-[#ffe6e6] dark:bg-rose-900/20 text-center border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1 text-black dark:text-white"
+                          />
+                        </TableCell>
 
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                      <Input
-                        value={row.purchaseValue}
-                        onChange={(e) => handleCellChange(row.id, 'purchaseValue', e.target.value)}
-                        onBlur={() => handleFormatCurrency(row.id, 'purchaseValue')}
-                        className="w-full h-full bg-[#ffe6e6] dark:bg-rose-900/20 text-right border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1 text-black dark:text-white"
-                      />
-                    </TableCell>
+                        <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                          <Input
+                            value={row.purchaseValue}
+                            onChange={(e) => handleCellChange(row.id, 'purchaseValue', e.target.value)}
+                            onBlur={() => handleFormatCurrency(row.id, 'purchaseValue')}
+                            className="w-full h-full bg-[#ffe6e6] dark:bg-rose-900/20 text-right border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1 text-black dark:text-white"
+                          />
+                        </TableCell>
 
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                      <Input
-                        value={row.openingDate}
-                        placeholder="DD-MM-YYYY"
-                        onChange={(e) => handleCellChange(row.id, 'openingDate', e.target.value)}
-                        className="w-full h-full bg-[#ffe6e6] dark:bg-rose-900/20 text-center border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1 text-black dark:text-white"
-                      />
-                    </TableCell>
+                        <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                          <Input
+                            value={row.openingDate}
+                            placeholder="DD-MM-YYYY"
+                            onChange={(e) => handleCellChange(row.id, 'openingDate', e.target.value)}
+                            className="w-full h-full bg-[#ffe6e6] dark:bg-rose-900/20 text-center border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1 text-black dark:text-white"
+                          />
+                        </TableCell>
 
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                      <Input
-                        value={row.wdvOpeningValue}
-                        onChange={(e) => handleCellChange(row.id, 'wdvOpeningValue', e.target.value)}
-                        onBlur={() => handleFormatCurrency(row.id, 'wdvOpeningValue')}
-                        className="w-full h-full bg-[#ffe6e6] dark:bg-rose-900/20 text-right font-semibold border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1 text-black dark:text-white"
-                      />
-                    </TableCell>
+                        <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                          <Input
+                            value={row.wdvOpeningValue}
+                            onChange={(e) => handleCellChange(row.id, 'wdvOpeningValue', e.target.value)}
+                            onBlur={() => handleFormatCurrency(row.id, 'wdvOpeningValue')}
+                            className="w-full h-full bg-[#ffe6e6] dark:bg-rose-900/20 text-right font-semibold border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1 text-black dark:text-white"
+                          />
+                        </TableCell>
 
-                    {YEARS.map(y => (
-                      <TableCell key={y} className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                        <Input
-                          value={row[y] || ""}
-                          onChange={(e) => handleCellChange(row.id, y, e.target.value)}
-                          onBlur={() => handleFormatCurrency(row.id, y)}
-                          className="h-full w-full min-w-0 text-right text-xs bg-[#ffe6e6] dark:bg-rose-900/20 border-none shadow-none focus-visible:ring-1 px-1 rounded-none text-black dark:text-white"
-                        />
+                        {MONTHS.map(m => (
+                          <TableCell key={m} className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                            <Input
+                              value={row[m] || ""}
+                              onChange={(e) => handleCellChange(row.id, m, e.target.value)}
+                              onBlur={() => handleFormatCurrency(row.id, m)}
+                              className="h-full w-full min-w-0 text-right text-xs bg-[#ffe6e6] dark:bg-rose-900/20 border-none shadow-none focus-visible:ring-1 px-1 rounded-none text-black dark:text-white"
+                            />
+                          </TableCell>
+                        ))}
+
+                        <TableCell className="text-right font-bold text-xs p-1 truncate align-middle bg-[#ffff99] dark:bg-yellow-600/40 text-black dark:text-white border-r-2 border-slate-300 dark:border-slate-700">
+                          {rowTotal > 0 ? formatIndianNumber(rowTotal) : "-"}
+                        </TableCell>
+
+                        <TableCell className="p-0 text-center">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => handleDeleteRow(row.id)}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+
+                  {currentYearData.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={7 + MONTHS.length + 2} className="h-24 text-center text-muted-foreground">
+                        No assets found. Click "Add Asset" to start.
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {/* Totals Row */}
+                  <TableRow className="bg-[#ffff99] dark:bg-yellow-600/40 font-bold hover:bg-[#ffff99]">
+                    <TableCell colSpan={4} className="border-r-2 border-slate-300 dark:border-slate-700 p-2 text-black dark:text-white text-xs text-right">
+                      Total
+                    </TableCell>
+                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 text-right p-1 truncate text-black dark:text-white text-xs">
+                      {formatIndianNumber(totals.purchaseValue)}
+                    </TableCell>
+                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700"></TableCell>
+                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 text-right p-1 truncate text-black dark:text-white text-xs">
+                      {formatIndianNumber(totals.wdvOpeningValue)}
+                    </TableCell>
+                    {MONTHS.map(m => (
+                      <TableCell key={m} className="border-r-2 border-slate-300 dark:border-slate-700 text-right p-1 truncate text-black dark:text-white text-xs">
+                        {formatIndianNumber(totals[m])}
                       </TableCell>
                     ))}
-
-                    <TableCell className="p-0 text-center">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => handleDeleteRow(row.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
+                    <TableCell className="text-right p-1 text-black dark:text-white truncate text-xs border-r-2 border-slate-300 dark:border-slate-700 font-bold">
+                      {formatIndianNumber(totals.total)}
                     </TableCell>
+                    <TableCell></TableCell>
                   </TableRow>
-                ))}
-
-                {currentYearData.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={7 + YEARS.length + 1} className="h-24 text-center text-muted-foreground">
-                      No assets found. Click "Add Asset" to start.
-                    </TableCell>
-                  </TableRow>
-                )}
-
-                {/* Totals Row */}
-                <TableRow className="bg-[#ffff99] dark:bg-yellow-600/40 font-bold hover:bg-[#ffff99]">
-                  <TableCell colSpan={4} className="border-r-2 border-slate-300 dark:border-slate-700 p-2 text-black dark:text-white text-xs text-right">
-                    Total
-                  </TableCell>
-                  <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 text-right p-1 truncate text-black dark:text-white text-xs">
-                    {formatIndianNumber(totals.purchaseValue)}
-                  </TableCell>
-                  <TableCell className="border-r-2 border-slate-300 dark:border-slate-700"></TableCell>
-                  <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 text-right p-1 truncate text-black dark:text-white text-xs">
-                    {formatIndianNumber(totals.wdvOpeningValue)}
-                  </TableCell>
-                  {YEARS.map(y => (
-                    <TableCell key={y} className="border-r-2 border-slate-300 dark:border-slate-700 text-right p-1 truncate text-black dark:text-white text-xs">
-                      {formatIndianNumber(totals[y])}
-                    </TableCell>
-                  ))}
-                  <TableCell></TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -498,9 +529,9 @@ export default function Depreciation() {
           <Plus className="mr-2 h-4 w-4" />
           Add Asset
         </Button>
-        <Button variant="outline" onClick={handleSaveChanges}>
-          <Save className="mr-2 h-4 w-4" />
-          Save Changes
+        <Button onClick={handleSaveChanges} disabled={isSaving || isQueryLoading}>
+          {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          {isSaving ? "Saving..." : "Save Changes"}
         </Button>
       </div>
 
@@ -519,11 +550,10 @@ export default function Depreciation() {
               onChange={e => setNewRowYear(e.target.value)}
               required
             >
-              {YEAR_OPTIONS.map(y => (
-                <option key={y} value={y}>{y}</option>
-              ))}
+              {availableYears.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
+
           <div className="space-y-2">
             <label className="text-sm font-medium">Category</label>
             <select
@@ -532,30 +562,27 @@ export default function Depreciation() {
               onChange={e => setNewCategory(e.target.value)}
               required
             >
-              {CATEGORY_OPTIONS.map(c => (
-                <option key={c} value={c}>{c}</option>
-              ))}
+              {CATEGORY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
+
           <div className="space-y-2">
             <label className="text-sm font-medium">Asset Name</label>
             <Input
-              placeholder="e.g. Laptop, Tata Ace"
               value={newAssetName}
               onChange={e => setNewAssetName(e.target.value)}
+              placeholder="e.g. Laptop, Car - Honda City"
               required
             />
           </div>
-          <div className="flex justify-end gap-2 pt-4 border-t">
-            <Button type="button" variant="outline" onClick={() => setIsAddAssetOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="submit">
-              Add Asset
-            </Button>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button type="button" variant="outline" onClick={() => setIsAddAssetOpen(false)}>Cancel</Button>
+            <Button type="submit">Add Asset</Button>
           </div>
         </form>
       </Modal>
+
     </div>
   )
 }

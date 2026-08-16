@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Modal } from "@/components/ui/modal"
-import { Plus, Save, Trash2, Download } from "lucide-react"
+import { Plus, Save, Trash2, Download, Loader2 } from "lucide-react"
 
 type BudgetValue = string | null;
 type MonthKey = 'apr' | 'may' | 'jun' | 'jul' | 'aug' | 'sep' | 'oct' | 'nov' | 'dec' | 'jan' | 'feb' | 'mar';
@@ -95,15 +95,15 @@ export default function Salary() {
 
   // Column resizing state
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    srNo: 50,
-    head: 130,
-    customer: 130,
-    project: 130,
-    location: 100,
-    designation: 190,
-    nameOfEmployee: 190,
-    apr: 70, may: 70, jun: 70, jul: 70, aug: 70, sep: 70, oct: 70, nov: 70, dec: 70, jan: 70, feb: 70, mar: 70,
-    totalFY: 120,
+    srNo: 45,
+    head: 80,
+    customer: 90,
+    project: 65,
+    location: 75,
+    designation: 155,
+    nameOfEmployee: 145,
+    apr: 65, may: 65, jun: 65, jul: 65, aug: 65, sep: 65, oct: 65, nov: 65, dec: 65, jan: 65, feb: 65, mar: 65,
+    totalFY: 85,
     action: 40
   });
 
@@ -279,6 +279,14 @@ export default function Salary() {
 
   const dynamicHeaders = getMonthHeaders(selectedYear);
 
+  const srNoLeft = 0;
+  const headLeft = srNoLeft + (colWidths.srNo || 45);
+  const customerLeft = headLeft + (colWidths.head || 80);
+  const projectLeft = customerLeft + (colWidths.customer || 90);
+  const locationLeft = projectLeft + (colWidths.project || 65);
+  const designationLeft = locationLeft + (colWidths.location || 75);
+  const nameLeft = designationLeft + (colWidths.designation || 155);
+
   return (
     <div className="flex-1 space-y-6 pb-8">
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -293,7 +301,7 @@ export default function Salary() {
             import('xlsx').then(XLSX => {
               const table = document.getElementById('export-table');
               if (table) {
-                const clone = table.cloneNode(true);
+                const clone = table.cloneNode(true) as Element;
                 const inputs = clone.querySelectorAll('input');
                 inputs.forEach(input => {
                   const val = input.value;
@@ -308,10 +316,10 @@ export default function Salary() {
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>
-          <div className="space-y-1 text-right sm:text-left">
-            <label className="text-xs font-medium text-muted-foreground">Financial Year</label>
+          <div className="flex flex-col">
+            <label className="text-[10px] uppercase font-bold text-muted-foreground mb-0.5">Financial Year</label>
             <select
-              className="flex h-9 w-40 rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+              className="bg-background border border-input rounded-md px-3 py-1.5 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-primary shadow-sm"
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value)}
             >
@@ -323,151 +331,165 @@ export default function Salary() {
 
       <Card className="overflow-hidden">
         <CardContent className="p-0">
-          <div className="overflow-x-auto no-scrollbar">
-            <Table id="export-table" className="border-collapse w-max min-w-full" style={{ tableLayout: 'fixed' }}>
-              <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs font-bold text-black dark:text-white h-10 px-1" style={{ width: colWidths.srNo, minWidth: colWidths.srNo }}>
-                    Sr No
-                    <Resizer colKey="srNo" />
-                  </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.head, minWidth: colWidths.head }}>
-                    Head
-                    <Resizer colKey="head" />
-                  </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.customer, minWidth: colWidths.customer }}>
-                    Customer
-                    <Resizer colKey="customer" />
-                  </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.project, minWidth: colWidths.project }}>
-                    Project
-                    <Resizer colKey="project" />
-                  </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.location, minWidth: colWidths.location }}>
-                    Location
-                    <Resizer colKey="location" />
-                  </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.designation, minWidth: colWidths.designation }}>
-                    Designation
-                    <Resizer colKey="designation" />
-                  </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.nameOfEmployee, minWidth: colWidths.nameOfEmployee }}>
-                    Name Of Employee
-                    <Resizer colKey="nameOfEmployee" />
-                  </TableHead>
-                  {dynamicHeaders.map((header, idx) => (
-                    <TableHead key={MONTHS[idx]} className="relative border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs font-bold text-black dark:text-white h-10 px-1" style={{ width: colWidths[MONTHS[idx]], minWidth: colWidths[MONTHS[idx]] }}>
-                      {header}
-                      <Resizer colKey={MONTHS[idx]} />
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center p-16 space-y-4 text-muted-foreground">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <p className="text-sm font-medium">Loading salary data...</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto no-scrollbar">
+              <Table id="export-table" className="border-collapse w-max min-w-full" style={{ tableLayout: 'fixed' }}>
+                <TableHeader className="bg-slate-200 dark:bg-slate-800">
+                  <TableRow className="bg-slate-200 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800">
+                    <TableHead className="sticky left-0 z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs font-bold text-black dark:text-white h-10 px-1" style={{ width: colWidths.srNo, minWidth: colWidths.srNo, left: srNoLeft }}>
+                      Sr No
+                      <Resizer colKey="srNo" />
                     </TableHead>
-                  ))}
-                  <TableHead className="relative text-right text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.totalFY, minWidth: colWidths.totalFY }}>
-                    Total FY {selectedYear.split('-')[0].slice(2)}-{selectedYear.split('-')[1].slice(2)}
-                    <Resizer colKey="totalFY" />
-                  </TableHead>
-                  <TableHead className="px-1" style={{ width: colWidths.action, minWidth: colWidths.action }}></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentYearData.map((row, index) => (
-                  <TableRow key={row.id} className="hover:bg-muted/30 group">
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs p-1 h-8">
-                      {index + 1}
-                    </TableCell>
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-2 h-8 text-xs font-medium">
-                      {row.head}
-                    </TableCell>
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                      <Input
-                        value={row.customer}
-                        onChange={(e) => handleCellChange(row.id, 'customer', e.target.value)}
-                        className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
-                      />
-                    </TableCell>
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                      <Input
-                        value={row.project}
-                        onChange={(e) => handleCellChange(row.id, 'project', e.target.value)}
-                        className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
-                      />
-                    </TableCell>
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                      <Input
-                        value={row.location}
-                        onChange={(e) => handleCellChange(row.id, 'location', e.target.value)}
-                        className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
-                      />
-                    </TableCell>
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                      <Input
-                        value={row.designation}
-                        onChange={(e) => handleCellChange(row.id, 'designation', e.target.value)}
-                        className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
-                      />
-                    </TableCell>
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                      <Input
-                        value={row.nameOfEmployee}
-                        onChange={(e) => handleCellChange(row.id, 'nameOfEmployee', e.target.value)}
-                        className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
-                      />
-                    </TableCell>
+                    <TableHead className="sticky z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.head, minWidth: colWidths.head, left: headLeft }}>
+                      Head
+                      <Resizer colKey="head" />
+                    </TableHead>
+                    <TableHead className="sticky z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.customer, minWidth: colWidths.customer, left: customerLeft }}>
+                      Customer
+                      <Resizer colKey="customer" />
+                    </TableHead>
+                    <TableHead className="sticky z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.project, minWidth: colWidths.project, left: projectLeft }}>
+                      Project
+                      <Resizer colKey="project" />
+                    </TableHead>
+                    <TableHead className="sticky z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.location, minWidth: colWidths.location, left: locationLeft }}>
+                      Location
+                      <Resizer colKey="location" />
+                    </TableHead>
+                    <TableHead className="sticky z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.designation, minWidth: colWidths.designation, left: designationLeft }}>
+                      Designation
+                      <Resizer colKey="designation" />
+                    </TableHead>
+                    <TableHead className="sticky z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.nameOfEmployee, minWidth: colWidths.nameOfEmployee, left: nameLeft }}>
+                      Name Of Employee
+                      <Resizer colKey="nameOfEmployee" />
+                    </TableHead>
 
-                    {MONTHS.map(month => (
-                      <TableCell key={month} className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                        <Input
-                          value={row[month] || ""}
-                          onChange={(e) => handleCellChange(row.id, month, e.target.value)}
-                          onBlur={(e) => {
-                            const val = parseFormattedNumber(e.target.value);
-                            if (val > 0) handleCellChange(row.id, month, formatIndianNumber(val));
-                          }}
-                          className="h-full w-full min-w-0 text-right text-xs bg-transparent border-none shadow-none focus-visible:ring-1 px-1 rounded-none"
-                        />
-                      </TableCell>
+                    {dynamicHeaders.map((header, idx) => (
+                      <TableHead key={idx} className="relative bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs font-bold text-black dark:text-white h-10 px-0" style={{ width: colWidths[MONTHS[idx]], minWidth: colWidths[MONTHS[idx]] }}>
+                        {header}
+                        <Resizer colKey={MONTHS[idx]} />
+                      </TableHead>
                     ))}
 
-                    <TableCell className="text-right font-bold text-xs p-1 truncate align-middle bg-[#e5df8f] dark:bg-yellow-600/40 text-black dark:text-white">
-                      {row.total ?? "-"}
-                    </TableCell>
-
-                    <TableCell className="p-0 text-center">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => handleDeleteRow(row.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </TableCell>
+                    <TableHead className="relative bg-slate-200 dark:bg-slate-800 text-right text-xs font-bold uppercase tracking-wider text-black dark:text-white h-10 px-2" style={{ width: colWidths.totalFY, minWidth: colWidths.totalFY }}>
+                      Total FY
+                      <Resizer colKey="totalFY" />
+                    </TableHead>
+                    <TableHead style={{ width: colWidths.action, minWidth: colWidths.action }}></TableHead>
                   </TableRow>
-                ))}
+                </TableHeader>
 
-                {currentYearData.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={21} className="h-24 text-center text-muted-foreground">
-                      No salary entries found. Click "Add Row" to create one.
-                    </TableCell>
-                  </TableRow>
-                )}
+                <TableBody>
+                  {currentYearData.map((row, idx) => (
+                    <TableRow key={row.id} className="hover:bg-muted/30 group">
+                      <TableCell className="sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-100 dark:group-hover:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-center font-medium p-1 text-xs text-muted-foreground" style={{ left: srNoLeft }}>
+                        {idx + 1}
+                      </TableCell>
 
-                {/* Grand Total Row */}
-                <TableRow className="bg-[#e5df8f] dark:bg-yellow-600/40 font-bold hover:bg-[#e5df8f]">
-                  <TableCell colSpan={7} className="border-r-2 border-slate-300 dark:border-slate-700 p-2 text-black dark:text-white text-sm text-right">
-                    Total
-                  </TableCell>
-                  {MONTHS.map(m => (
-                    <TableCell key={m} className="border-r-2 border-slate-300 dark:border-slate-700 text-right p-1 truncate text-black dark:text-white text-xs">
-                      {formatIndianNumber(totals[m])}
-                    </TableCell>
+                      <TableCell className="sticky z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-100 dark:group-hover:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8" style={{ left: headLeft }}>
+                        <Input
+                          value={row.head}
+                          onChange={(e) => handleCellChange(row.id, 'head', e.target.value)}
+                          className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
+                        />
+                      </TableCell>
+                      <TableCell className="sticky z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-100 dark:group-hover:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8" style={{ left: customerLeft }}>
+                        <Input
+                          value={row.customer}
+                          onChange={(e) => handleCellChange(row.id, 'customer', e.target.value)}
+                          className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
+                        />
+                      </TableCell>
+                      <TableCell className="sticky z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-100 dark:group-hover:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8" style={{ left: projectLeft }}>
+                        <Input
+                          value={row.project}
+                          onChange={(e) => handleCellChange(row.id, 'project', e.target.value)}
+                          className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
+                        />
+                      </TableCell>
+                      <TableCell className="sticky z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-100 dark:group-hover:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8" style={{ left: locationLeft }}>
+                        <Input
+                          value={row.location}
+                          onChange={(e) => handleCellChange(row.id, 'location', e.target.value)}
+                          className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
+                        />
+                      </TableCell>
+                      <TableCell className="sticky z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-100 dark:group-hover:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8" style={{ left: designationLeft }}>
+                        <Input
+                          value={row.designation}
+                          onChange={(e) => handleCellChange(row.id, 'designation', e.target.value)}
+                          className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
+                        />
+                      </TableCell>
+                      <TableCell className="sticky z-10 bg-white dark:bg-slate-900 group-hover:bg-slate-100 dark:group-hover:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8" style={{ left: nameLeft }}>
+                        <Input
+                          value={row.nameOfEmployee}
+                          onChange={(e) => handleCellChange(row.id, 'nameOfEmployee', e.target.value)}
+                          className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
+                        />
+                      </TableCell>
+
+                      {MONTHS.map(month => (
+                        <TableCell key={month} className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                          <Input
+                            value={row[month] || ""}
+                            onChange={(e) => handleCellChange(row.id, month, e.target.value)}
+                            onBlur={(e) => {
+                              const val = parseFormattedNumber(e.target.value);
+                              if (val > 0) handleCellChange(row.id, month, formatIndianNumber(val));
+                            }}
+                            className="h-full w-full min-w-0 text-right text-xs bg-transparent border-none shadow-none focus-visible:ring-1 px-1 rounded-none"
+                          />
+                        </TableCell>
+                      ))}
+
+                      <TableCell className="text-right font-bold text-xs p-1 truncate align-middle bg-[#e5df8f] dark:bg-yellow-600/40 text-black dark:text-white">
+                        {row.total ?? "-"}
+                      </TableCell>
+
+                      <TableCell className="p-0 text-center">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => handleDeleteRow(row.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                  <TableCell className="text-right p-1 text-black dark:text-white truncate text-xs">{formatIndianNumber(totals.total)}</TableCell>
-                  <TableCell></TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
+
+                  {currentYearData.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={21} className="h-24 text-center text-muted-foreground">
+                        No salary entries found. Click "Add Row" to create one.
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  <TableRow className="bg-[#e5df8f] dark:bg-yellow-600/40 font-bold hover:bg-[#e5df8f]">
+                    <TableCell colSpan={7} className="sticky left-0 z-20 bg-[#e5df8f] dark:bg-yellow-600/40 border-r-2 border-slate-300 dark:border-slate-700 p-2 text-black dark:text-white text-sm text-right font-bold" style={{ left: 0 }}>
+                      Total
+                    </TableCell>
+                    {MONTHS.map(m => (
+                      <TableCell key={m} className="border-r-2 border-slate-300 dark:border-slate-700 text-right p-1 truncate text-black dark:text-white text-xs">
+                        {formatIndianNumber(totals[m])}
+                      </TableCell>
+                    ))}
+                    <TableCell className="text-right p-1 text-black dark:text-white truncate text-xs">{formatIndianNumber(totals.total)}</TableCell>
+                    <TableCell></TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -480,9 +502,9 @@ export default function Salary() {
           <Plus className="mr-2 h-4 w-4" />
           Add Row
         </Button>
-        <Button variant="outline" onClick={handleSaveChanges}>
-          <Save className="mr-2 h-4 w-4" />
-          Save Changes
+        <Button onClick={handleSaveChanges} disabled={isSaving || isLoading}>
+          {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          {isSaving ? "Saving..." : "Save Changes"}
         </Button>
       </div>
 

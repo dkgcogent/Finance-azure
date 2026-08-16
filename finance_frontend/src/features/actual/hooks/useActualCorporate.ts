@@ -6,7 +6,8 @@ export const useActualCorporateQuery = (financialYear: string) => {
   return useQuery({
     queryKey: ['actual-corporate', financialYear],
     queryFn: () => getActualCorporate(financialYear),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 };
 
@@ -16,6 +17,8 @@ export const useSaveActualCorporateMutation = () => {
     mutationFn: ({ financialYear, data }: { financialYear: string, data: any[] }) => saveActualCorporate(financialYear, data),
     onSuccess: (_, { financialYear }) => {
       queryClient.invalidateQueries({ queryKey: ['actual-corporate', financialYear] });
+      queryClient.invalidateQueries({ queryKey: ['ActualSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['actualVsBudget'] });
     },
   });
 };

@@ -6,7 +6,8 @@ export const useBankChargesQuery = (financialYear: string) => {
   return useQuery({
     queryKey: ['bank-charges', financialYear],
     queryFn: () => getBankCharges(financialYear),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 };
 
@@ -16,6 +17,8 @@ export const useSaveBankChargesMutation = () => {
     mutationFn: ({ financialYear, data }: { financialYear: string, data: any[] }) => saveBankCharges(financialYear, data),
     onSuccess: (_, { financialYear }) => {
       queryClient.invalidateQueries({ queryKey: ['bank-charges', financialYear] });
+      queryClient.invalidateQueries({ queryKey: ['budgetSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['actualVsBudget'] });
     },
   });
 };

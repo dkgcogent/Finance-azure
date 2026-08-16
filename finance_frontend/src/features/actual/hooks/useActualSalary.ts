@@ -6,7 +6,8 @@ export const useActualSalaryQuery = (financialYear: string) => {
   return useQuery({
     queryKey: ['actual-salary', financialYear],
     queryFn: () => getActualSalary(financialYear),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 };
 
@@ -16,6 +17,8 @@ export const useSaveActualSalaryMutation = () => {
     mutationFn: ({ financialYear, data }: { financialYear: string, data: any[] }) => saveActualSalary(financialYear, data),
     onSuccess: (_, { financialYear }) => {
       queryClient.invalidateQueries({ queryKey: ['actual-salary', financialYear] });
+      queryClient.invalidateQueries({ queryKey: ['ActualSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['actualVsBudget'] });
     },
   });
 };

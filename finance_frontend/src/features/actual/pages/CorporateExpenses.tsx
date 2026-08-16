@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Modal } from "@/components/ui/modal"
-import { Plus, Save, Trash2, CalendarPlus, Download } from "lucide-react"
+import { Plus, Save, Trash2, CalendarPlus, Download, Loader2 } from "lucide-react"
 
 type ActualValue = string | null;
 type MonthKey = 'apr' | 'may' | 'jun' | 'jul' | 'aug' | 'sep' | 'oct' | 'nov' | 'dec' | 'jan' | 'feb' | 'mar';
@@ -107,9 +107,9 @@ export default function CorporateExpenses() {
   const [rowToDelete, setRowToDelete] = useState<string | null>(null);
 
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    head: 250,
-    apr: 60, may: 60, jun: 60, jul: 60, aug: 60, sep: 60, oct: 60, nov: 60, dec: 60, jan: 60, feb: 60, mar: 60,
-    total: 100
+    head: 220,
+    apr: 65, may: 65, jun: 65, jul: 65, aug: 65, sep: 65, oct: 65, nov: 65, dec: 65, jan: 65, feb: 65, mar: 65,
+    total: 85
   });
 
   const startResize = (e: React.MouseEvent, colKey: string) => {
@@ -286,7 +286,7 @@ export default function CorporateExpenses() {
             import('xlsx').then(XLSX => {
               const table = document.getElementById('export-table');
               if (table) {
-                const clone = table.cloneNode(true);
+                const clone = table.cloneNode(true) as Element;
                 const inputs = clone.querySelectorAll('input');
                 inputs.forEach(input => {
                   const val = input.value;
@@ -364,14 +364,14 @@ export default function CorporateExpenses() {
                           <div className="w-full text-right text-foreground font-bold p-1 select-none pr-2">{row[month] ?? "-"}</div>
                         ) : (
                           <Input
-                            value={row[month] || ""}
-                            onChange={(e) => handleCellChange(row.id, month, e.target.value)}
-                            onBlur={(e) => {
-                              const val = parseFormattedNumber(e.target.value);
-                              handleCellChange(row.id, month, val > 0 ? formatIndianNumber(val) : "");
-                            }}
-                            className="h-8 w-full min-w-0 text-right text-xs bg-transparent border-transparent hover:border-input focus:border-ring shadow-none focus-visible:ring-1 px-1 py-0 rounded-none"
-                          />
+                          value={row[month] || ""}
+                          onChange={(e) => handleCellChange(row.id, month, e.target.value)}
+                          onBlur={(e) => {
+                            const val = parseFormattedNumber(e.target.value);
+                            handleCellChange(row.id, month, val > 0 ? formatIndianNumber(val) : "");
+                          }}
+                          className="h-8 w-full min-w-0 text-right text-xs bg-transparent border-transparent hover:border-input focus:border-ring shadow-none focus-visible:ring-1 px-1 py-0 rounded-none"
+                        />
                         )}
                       </TableCell>
                     ))}
@@ -407,16 +407,16 @@ export default function CorporateExpenses() {
       </Card>
 
       <div className="flex justify-end items-center gap-2 pt-2">
-        <Button onClick={() => {
+        <Button variant="outline" onClick={() => {
           setNewRowYear(selectedYear);
           setIsAddHeadOpen(true);
         }}>
           <Plus className="mr-2 h-4 w-4" />
           Add Head
         </Button>
-        <Button onClick={handleSaveChanges}>
-          <Save className="mr-2 h-4 w-4" />
-          Save Changes
+        <Button onClick={handleSaveChanges} disabled={isSaving || isLoading}>
+          {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          {isSaving ? "Saving..." : "Save Changes"}
         </Button>
       </div>
 

@@ -33,6 +33,7 @@ type Bill = {
   dueDate: string
   amount: number
   status: "Paid" | "Pending Verification" | "Approved" | "Rejected" | "Draft"
+  azureUrl?: string | null
 }
 
 
@@ -71,7 +72,13 @@ export default function VendorBillsList() {
         cell: ({ row }) => (
           <div
             className="flex items-center gap-2 font-medium text-primary cursor-pointer hover:underline"
-            onClick={() => setSelectedBill(row.original)}
+            onClick={() => {
+              if (row.original.azureUrl) {
+                window.open(row.original.azureUrl, '_blank');
+              } else {
+                setSelectedBill(row.original);
+              }
+            }}
           >
             <FileText className="h-4 w-4" />
             {row.getValue("billNumber")}
@@ -112,7 +119,17 @@ export default function VendorBillsList() {
         id: "actions",
         header: "Actions",
         cell: ({ row }) => (
-          <Button variant="ghost" size="sm" onClick={() => setSelectedBill(row.original)}>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={() => {
+              if (row.original.azureUrl) {
+                window.open(row.original.azureUrl, '_blank');
+              } else {
+                setSelectedBill(row.original);
+              }
+            }}
+          >
             View
           </Button>
         ),

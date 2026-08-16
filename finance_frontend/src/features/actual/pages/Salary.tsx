@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Modal } from "@/components/ui/modal"
-import { Plus, Save, Trash2, Download } from "lucide-react"
+import { Plus, Save, Trash2, Download, Loader2 } from "lucide-react"
 
 type ActualValue = string | null;
 type MonthKey = 'apr' | 'may' | 'jun' | 'jul' | 'aug' | 'sep' | 'oct' | 'nov' | 'dec' | 'jan' | 'feb' | 'mar';
@@ -95,15 +95,15 @@ export default function Salary() {
 
   // Column resizing state
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    srNo: 50,
-    head: 130,
-    customer: 130,
-    project: 130,
-    location: 100,
-    designation: 190,
-    nameOfEmployee: 190,
-    apr: 70, may: 70, jun: 70, jul: 70, aug: 70, sep: 70, oct: 70, nov: 70, dec: 70, jan: 70, feb: 70, mar: 70,
-    totalFY: 120,
+    srNo: 45,
+    head: 80,
+    customer: 90,
+    project: 65,
+    location: 75,
+    designation: 155,
+    nameOfEmployee: 145,
+    apr: 65, may: 65, jun: 65, jul: 65, aug: 65, sep: 65, oct: 65, nov: 65, dec: 65, jan: 65, feb: 65, mar: 65,
+    totalFY: 85,
     action: 40
   });
 
@@ -279,6 +279,14 @@ export default function Salary() {
 
   const dynamicHeaders = getMonthHeaders(selectedYear);
 
+  const srNoLeft = 0;
+  const headLeft = srNoLeft + (colWidths.srNo || 45);
+  const customerLeft = headLeft + (colWidths.head || 80);
+  const projectLeft = customerLeft + (colWidths.customer || 90);
+  const locationLeft = projectLeft + (colWidths.project || 65);
+  const designationLeft = locationLeft + (colWidths.location || 75);
+  const nameLeft = designationLeft + (colWidths.designation || 155);
+
   return (
     <div className="flex-1 space-y-6 pb-8">
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -293,7 +301,7 @@ export default function Salary() {
             import('xlsx').then(XLSX => {
               const table = document.getElementById('export-table');
               if (table) {
-                const clone = table.cloneNode(true);
+                const clone = table.cloneNode(true) as Element;
                 const inputs = clone.querySelectorAll('input');
                 inputs.forEach(input => {
                   const val = input.value;
@@ -325,43 +333,43 @@ export default function Salary() {
         <CardContent className="p-0">
           <div className="overflow-x-auto no-scrollbar">
             <Table id="export-table" className="border-collapse w-max min-w-full" style={{ tableLayout: 'fixed' }}>
-              <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs font-bold text-black dark:text-white h-10 px-1" style={{ width: colWidths.srNo, minWidth: colWidths.srNo }}>
+              <TableHeader className="bg-slate-200 dark:bg-slate-800">
+                <TableRow className="bg-slate-200 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-800">
+                  <TableHead className="sticky left-0 z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs font-bold text-black dark:text-white h-10 px-1" style={{ width: colWidths.srNo, minWidth: colWidths.srNo, left: srNoLeft }}>
                     Sr No
                     <Resizer colKey="srNo" />
                   </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.head, minWidth: colWidths.head }}>
+                  <TableHead className="sticky z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.head, minWidth: colWidths.head, left: headLeft }}>
                     Head
                     <Resizer colKey="head" />
                   </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.customer, minWidth: colWidths.customer }}>
+                  <TableHead className="sticky z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.customer, minWidth: colWidths.customer, left: customerLeft }}>
                     Customer
                     <Resizer colKey="customer" />
                   </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.project, minWidth: colWidths.project }}>
+                  <TableHead className="sticky z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.project, minWidth: colWidths.project, left: projectLeft }}>
                     Project
                     <Resizer colKey="project" />
                   </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.location, minWidth: colWidths.location }}>
+                  <TableHead className="sticky z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.location, minWidth: colWidths.location, left: locationLeft }}>
                     Location
                     <Resizer colKey="location" />
                   </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.designation, minWidth: colWidths.designation }}>
+                  <TableHead className="sticky z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.designation, minWidth: colWidths.designation, left: designationLeft }}>
                     Designation
                     <Resizer colKey="designation" />
                   </TableHead>
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.nameOfEmployee, minWidth: colWidths.nameOfEmployee }}>
+                  <TableHead className="sticky z-30 bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.nameOfEmployee, minWidth: colWidths.nameOfEmployee, left: nameLeft }}>
                     Name Of Employee
                     <Resizer colKey="nameOfEmployee" />
                   </TableHead>
                   {dynamicHeaders.map((header, idx) => (
-                    <TableHead key={MONTHS[idx]} className="relative border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs font-bold text-black dark:text-white h-10 px-1" style={{ width: colWidths[MONTHS[idx]], minWidth: colWidths[MONTHS[idx]] }}>
+                    <TableHead key={MONTHS[idx]} className="relative bg-slate-200 dark:bg-slate-800 border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs font-bold text-black dark:text-white h-10 px-1" style={{ width: colWidths[MONTHS[idx]], minWidth: colWidths[MONTHS[idx]] }}>
                       {header}
                       <Resizer colKey={MONTHS[idx]} />
                     </TableHead>
                   ))}
-                  <TableHead className="relative text-right text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.totalFY, minWidth: colWidths.totalFY }}>
+                  <TableHead className="relative bg-slate-200 dark:bg-slate-800 text-right text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.totalFY, minWidth: colWidths.totalFY }}>
                     Total FY {selectedYear.split('-')[0].slice(2)}-{selectedYear.split('-')[1].slice(2)}
                     <Resizer colKey="totalFY" />
                   </TableHead>
@@ -371,41 +379,41 @@ export default function Salary() {
               <TableBody>
                 {currentYearData.map((row, index) => (
                   <TableRow key={row.id} className="hover:bg-muted/30 group">
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs p-1 h-8">
+                    <TableCell className="sticky left-0 z-10 bg-white dark:bg-slate-900 group-hover:bg-muted/30 border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs p-1 h-8" style={{ left: srNoLeft }}>
                       {index + 1}
                     </TableCell>
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-2 h-8 text-xs font-medium">
+                    <TableCell className="sticky z-10 bg-white dark:bg-slate-900 group-hover:bg-muted/30 border-r-2 border-slate-300 dark:border-slate-700 p-2 h-8 text-xs font-medium" style={{ left: headLeft }}>
                       {row.head}
                     </TableCell>
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                    <TableCell className="sticky z-10 bg-white dark:bg-slate-900 group-hover:bg-muted/30 border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8" style={{ left: customerLeft }}>
                       <Input
                         value={row.customer}
                         onChange={(e) => handleCellChange(row.id, 'customer', e.target.value)}
                         className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
                       />
                     </TableCell>
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                    <TableCell className="sticky z-10 bg-white dark:bg-slate-900 group-hover:bg-muted/30 border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8" style={{ left: projectLeft }}>
                       <Input
                         value={row.project}
                         onChange={(e) => handleCellChange(row.id, 'project', e.target.value)}
                         className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
                       />
                     </TableCell>
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                    <TableCell className="sticky z-10 bg-white dark:bg-slate-900 group-hover:bg-muted/30 border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8" style={{ left: locationLeft }}>
                       <Input
                         value={row.location}
                         onChange={(e) => handleCellChange(row.id, 'location', e.target.value)}
                         className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
                       />
                     </TableCell>
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                    <TableCell className="sticky z-10 bg-white dark:bg-slate-900 group-hover:bg-muted/30 border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8" style={{ left: designationLeft }}>
                       <Input
                         value={row.designation}
                         onChange={(e) => handleCellChange(row.id, 'designation', e.target.value)}
                         className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
                       />
                     </TableCell>
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                    <TableCell className="sticky z-10 bg-white dark:bg-slate-900 group-hover:bg-muted/30 border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8" style={{ left: nameLeft }}>
                       <Input
                         value={row.nameOfEmployee}
                         onChange={(e) => handleCellChange(row.id, 'nameOfEmployee', e.target.value)}
@@ -454,7 +462,7 @@ export default function Salary() {
 
                 {/* Grand Total Row */}
                 <TableRow className="bg-[#e5df8f] dark:bg-yellow-600/40 font-bold hover:bg-[#e5df8f]">
-                  <TableCell colSpan={7} className="border-r-2 border-slate-300 dark:border-slate-700 p-2 text-black dark:text-white text-sm text-right">
+                  <TableCell colSpan={7} className="sticky left-0 z-20 bg-[#e5df8f] dark:bg-yellow-600/40 border-r-2 border-slate-300 dark:border-slate-700 p-2 text-black dark:text-white text-sm text-right">
                     Total
                   </TableCell>
                   {MONTHS.map(m => (
@@ -480,9 +488,9 @@ export default function Salary() {
           <Plus className="mr-2 h-4 w-4" />
           Add Row
         </Button>
-        <Button variant="outline" onClick={handleSaveChanges}>
-          <Save className="mr-2 h-4 w-4" />
-          Save Changes
+        <Button onClick={handleSaveChanges} disabled={isSaving || isLoading}>
+          {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          {isSaving ? "Saving..." : "Save Changes"}
         </Button>
       </div>
 

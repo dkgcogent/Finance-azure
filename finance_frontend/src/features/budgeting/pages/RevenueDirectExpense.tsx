@@ -5,7 +5,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Modal } from "@/components/ui/modal"
-import { Plus, Save, Trash2, Download } from "lucide-react"
+import { Plus, Save, Trash2, Download, Loader2 } from "lucide-react"
 
 type BudgetValue = string | null;
 type MonthKey = 'apr' | 'may' | 'jun' | 'jul' | 'aug' | 'sep' | 'oct' | 'nov' | 'dec' | 'jan' | 'feb' | 'mar';
@@ -84,11 +84,11 @@ export default function RevenueDirectExpense() {
 
   const [colWidths, setColWidths] = useState<Record<string, number>>({
     customer: 100,
-    project: 100,
-    location: 80,
-    head: 150,
-    apr: 60, may: 60, jun: 60, jul: 60, aug: 60, sep: 60, oct: 60, nov: 60, dec: 60, jan: 60, feb: 60, mar: 60,
-    total: 80
+    project: 95,
+    location: 75,
+    head: 135,
+    apr: 65, may: 65, jun: 65, jul: 65, aug: 65, sep: 65, oct: 65, nov: 65, dec: 65, jan: 65, feb: 65, mar: 65,
+    total: 85
   });
 
   const startResize = (e: React.MouseEvent, colKey: string) => {
@@ -473,8 +473,8 @@ export default function RevenueDirectExpense() {
 
       <Card className="overflow-hidden">
         <CardContent className="p-0">
-          <div className="overflow-x-auto no-scrollbar relative w-[calc(100vw-300px)]">
-            <Table id="budget-table" className="border-collapse w-full text-xs relative" style={{ tableLayout: 'fixed' }}>
+          <div className="overflow-x-auto relative w-full no-scrollbar">
+            <Table id="budget-table" className="border-collapse w-max min-w-full text-xs relative" style={{ tableLayout: 'fixed' }}>
               <TableHeader>
                 <TableRow className="bg-muted/50 hover:bg-muted/50">
                   <TableHead className="relative border-r border-border/50 font-bold text-foreground p-1" style={{ width: colWidths.customer, minWidth: colWidths.customer }}>
@@ -615,9 +615,9 @@ export default function RevenueDirectExpense() {
       </Card>
 
       <div className="flex justify-end items-center gap-2 pt-2">
-        <Button variant="outline" onClick={handleSaveChanges}>
-          <Save className="mr-2 h-4 w-4" />
-          Save Changes
+        <Button onClick={handleSaveChanges} disabled={isSaving || isLoading}>
+          {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          {isSaving ? "Saving..." : "Save Changes"}
         </Button>
         <Button onClick={() => {
           setNewGroupYear(selectedYear);

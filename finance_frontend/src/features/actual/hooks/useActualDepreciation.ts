@@ -5,7 +5,8 @@ export const useActualDepreciationQuery = (financialYear: string) => {
   return useQuery({
     queryKey: ['actual-depreciation', financialYear],
     queryFn: () => getDepreciation(financialYear),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 };
 
@@ -15,6 +16,8 @@ export const useSaveActualDepreciationMutation = () => {
     mutationFn: ({ financialYear, data }: { financialYear: string, data: any[] }) => saveDepreciation(financialYear, data),
     onSuccess: (_, { financialYear }) => {
       queryClient.invalidateQueries({ queryKey: ['actual-depreciation', financialYear] });
+      queryClient.invalidateQueries({ queryKey: ['ActualSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['actualVsBudget'] });
     },
   });
 };

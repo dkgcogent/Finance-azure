@@ -36,6 +36,7 @@ type PaymentEntry = {
   employeeName: string
   employeeCode: string
   beneficiaryAccountNo: string
+  ifscCode: string
   beneficiaryName: string
   amount: number
   remarksClient: string
@@ -78,8 +79,8 @@ export default function PaymentSheet() {
               id: userId,
               employeeName: `Employee ${userId}`,
               employeeCode: `EMP${userId}`,
-              // Since we don't have real bank accounts mapped, we generate a mock one based on EMP ID
               beneficiaryAccountNo: `000100000${userId.padStart(3, '0')}`,
+              ifscCode: 'ICIC0000011',
               beneficiaryName: `Employee ${userId}`,
               amount: 0,
               remarksClient: "Imprest Payment",
@@ -122,6 +123,11 @@ export default function PaymentSheet() {
           </div>
         ),
         cell: ({ row }) => <div className="font-mono text-xs tracking-wider whitespace-nowrap">{row.getValue("beneficiaryAccountNo")}</div>,
+      },
+      {
+        accessorKey: "ifscCode",
+        header: ({ column }) => <SortableHeader column={column} title="IFSC Code" />,
+        cell: ({ row }) => <div className="font-mono text-xs uppercase tracking-wider whitespace-nowrap">{row.getValue("ifscCode")}</div>,
       },
       {
         accessorKey: "beneficiaryName",
@@ -170,6 +176,8 @@ export default function PaymentSheet() {
             <tr>
               <th style="border: 1px solid #ccc; padding: 8px;">Emp Name</th>
               <th style="border: 1px solid #ccc; padding: 8px;">Account No</th>
+              <th style="border: 1px solid #ccc; padding: 8px;">IFSC Code</th>
+              <th style="border: 1px solid #ccc; padding: 8px;">Beneficiary Name</th>
               <th style="border: 1px solid #ccc; padding: 8px;">Amount</th>
               <th style="border: 1px solid #ccc; padding: 8px;">Remarks</th>
             </tr>
@@ -179,6 +187,8 @@ export default function PaymentSheet() {
               <tr>
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.employeeName}</td>
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.beneficiaryAccountNo}</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">${d.ifscCode}</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">${d.beneficiaryName}</td>
                 <td style="border: 1px solid #ccc; padding: 8px;">₹${d.amount}</td>
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.remarksBeneficiary}</td>
               </tr>
@@ -201,10 +211,10 @@ export default function PaymentSheet() {
     setShowPrintMenu(false);
     if (!data.length) return;
     
-    const headers = ['Employee Name', 'Employee Code', 'Account Number', 'Amount', 'Remarks'];
+    const headers = ['Employee Name', 'Employee Code', 'Account Number', 'IFSC Code', 'Beneficiary Name', 'Amount', 'Remarks'];
     const csvContent = [
       headers.join(','),
-      ...data.map(d => `"${d.employeeName}","${d.employeeCode}","${d.beneficiaryAccountNo}","${d.amount}","${d.remarksBeneficiary}"`)
+      ...data.map(d => `"${d.employeeName}","${d.employeeCode}","${d.beneficiaryAccountNo}","${d.ifscCode}","${d.beneficiaryName}","${d.amount}","${d.remarksBeneficiary}"`)
     ].join('\n');
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -218,7 +228,7 @@ export default function PaymentSheet() {
     setShowPrintMenu(false);
     if (!data.length) return;
     
-    const txtContent = data.map(d => `${d.beneficiaryAccountNo}|${d.amount}|${d.employeeName}|${d.remarksBeneficiary}`).join('\n');
+    const txtContent = data.map(d => `${d.beneficiaryAccountNo}|${d.ifscCode}|${d.amount}|${d.employeeName}|${d.remarksBeneficiary}`).join('\n');
     
     const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
     const link = document.createElement('a');

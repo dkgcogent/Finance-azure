@@ -2,11 +2,11 @@ import React, { useState, useRef, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Download } from "lucide-react"
+import { ArrowLeft, Download, Loader2 } from "lucide-react"
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import { useCustomerInvoices } from "@/features/invoicing/hooks/useCustomerInvoices"
-import { useVendors, useVendorTrips, useCreateVendorInvoice } from "../hooks/useVendorInvoices"
+import { useVendors, useVendorTrips, useCreateVendorInvoice, useNextVendorInvoiceNumber } from "../hooks/useVendorInvoices"
 import { useMasterData } from "@/features/invoicing/hooks/useInvoiceReports"
 
 const mockAnnexureData = [
@@ -54,6 +54,7 @@ import { numberToWords } from "@/lib/utils"
 
 export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
   const [step, setStep] = useState<"details" | "mis" | "annexure" | "preview">("details")
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [customerId, setCustomerId] = useState("")
   const [projectId, setProjectId] = useState("")
   const [locationId, setLocationId] = useState("")
@@ -68,6 +69,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
   const { customers, projects, locations, isLoading: isMasterLoading } = useMasterData();
   const { data: customerInvoices } = useCustomerInvoices('25-26');
   const { data: vendors } = useVendors();
+  const { data: nextInvoiceNumData } = useNextVendorInvoiceNumber();
   const { data: vendorTrips, isLoading: isTripsLoading } = useVendorTrips(vendorId, startDate, endDate, vehicleType, customerId, projectId, locationId);
 
   const filteredProjects = useMemo(() => {
@@ -217,7 +219,12 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     } else if (step === "preview") {
       // Final submit
       try {
-        const amount = Number((vendorTrips?.misData || []).reduce((acc: number, row: any) => acc + (row.totalAmount || row.finalAmt || 0), 0));
+        setIsSubmitting(true);
+        const rawTotal = (vendorTrips?.misData || []).reduce((acc: number, row: any) => {
+          const rowVal = parseFloat(row.totalAmount ?? row.finalAmt ?? row.totalAmt ?? '0');
+          return acc + (isNaN(rowVal) ? 0 : rowVal);
+        }, 0);
+        const amount = isNaN(rawTotal) ? 0 : Number(rawTotal.toFixed(2));
         const vendorNameStr = vendorTrips?.vendorInfo?.VendorName || vendors?.find(v => v.id.toString() === vendorId)?.name || 'Unknown Vendor';
 
         const styleElements = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'));
@@ -247,7 +254,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
           </html>
         ` : undefined;
 
-        await createInvoiceMutation.mutateAsync({
+        const res = await createInvoiceMutation.mutateAsync({
           vendorName: vendorNameStr,
           amount: amount,
           linkedCustomerInvoice: linkedInvoice,
@@ -257,9 +264,15 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
           dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
         });
 
+        if (res?.azureBlobUrl) {
+          window.open(res.azureBlobUrl, '_blank');
+        }
+
         if (onCancel) onCancel(); // Close screen
       } catch (error) {
         console.error("Failed to save vendor invoice", error);
+      } finally {
+        setIsSubmitting(false);
       }
     }
   }
@@ -721,7 +734,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                   <div className="border-r-[3px] border-black">
                     <div className="flex border-b-[3px] border-black">
                       <div className="w-[140px] font-bold p-1 pl-2 border-r-[3px] border-black">Invoice No.</div>
-                      <div className="flex-1 p-1 pl-2">: VN/26-27/001</div>
+                      <div className="flex-1 p-1 pl-2">: {nextInvoiceNumData?.invoiceNumber || 'VN/26-27/001'}</div>
                     </div>
                     <div className="flex border-b-[3px] border-black">
                       <div className="w-[140px] font-bold p-1 pl-2 border-r-[3px] border-black">Our GSTIN</div>
@@ -906,9 +919,10 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
               <Button
                 className="bg-blue-600 text-white hover:bg-blue-700"
                 onClick={handleNext}
-                disabled={step === "details" && !vehicleType}
+                disabled={(step === "details" && !vehicleType) || isTripsLoading || isSubmitting}
               >
-                {step === "preview" ? "Submit" : "Next"}
+                {(isTripsLoading || isSubmitting) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                {isSubmitting ? "Saving..." : step === "preview" ? "Submit" : "Next"}
               </Button>
             </div>
           </div>

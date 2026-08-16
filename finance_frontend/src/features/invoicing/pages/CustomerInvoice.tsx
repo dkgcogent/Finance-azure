@@ -962,6 +962,7 @@ export default function CustomerInvoice() {
                 )}
                 <Button
                   variant="default"
+                  disabled={reportMutation.isPending || createInvoiceMutation.isPending}
                   onClick={() => {
                     if (createStep === "details") {
                       reportMutation.mutate({
@@ -985,7 +986,18 @@ export default function CustomerInvoice() {
                     }
                   }}
                 >
-                  {createStep === "preview" ? "Proceed" : createStep === "annexures" ? "Submit" : "Next"}
+                  {(reportMutation.isPending || createInvoiceMutation.isPending) && (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  )}
+                  {createInvoiceMutation.isPending
+                    ? "Saving Invoice..."
+                    : reportMutation.isPending
+                    ? "Generating..."
+                    : createStep === "preview"
+                    ? "Proceed"
+                    : createStep === "annexures"
+                    ? "Submit"
+                    : "Next"}
                 </Button>
               </div>
             </div>

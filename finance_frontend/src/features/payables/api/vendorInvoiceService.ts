@@ -31,6 +31,11 @@ export const vendorInvoiceService = {
     return response.data;
   },
 
+  getNextInvoiceNumber: async (): Promise<{ invoiceNumber: string }> => {
+    const response = await axios.get(`${API_BASE_URL}/vendors/next-number`);
+    return response.data;
+  },
+
   getVendorTrips: async (vendorName: string, startDate: string, endDate: string, tripType: string, customerId?: string, projectId?: string, locationId?: string) => {
     const response = await axios.get(`${API_BASE_URL}/vendors/trips`, {
       params: { vendorName, startDate, endDate, tripType, customerId, projectId, locationId }

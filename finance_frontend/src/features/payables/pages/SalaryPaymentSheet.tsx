@@ -27,6 +27,7 @@ type PaymentEntry = {
   employeeName: string
   employeeCode: string
   beneficiaryAccountNo: string
+  ifscCode: string
   beneficiaryName: string
   amount: number
   remarksClient: string
@@ -60,6 +61,7 @@ export default function SalaryPaymentSheet() {
       employeeName: row.EmployeeName || "Unknown",
       employeeCode: row.EmployeeCode || "N/A",
       beneficiaryAccountNo: row.AccountNumber || "N/A",
+      ifscCode: row.IFSCCode || row.ifsc_code || "SBIN0001234",
       beneficiaryName: row.AccountHolder || "N/A",
       amount: Number(row.NetPayableAmount || 0),
       remarksClient: "Salary Payment",
@@ -87,6 +89,11 @@ export default function SalaryPaymentSheet() {
           </div>
         ),
         cell: ({ row }) => <div className="font-mono text-xs tracking-wider whitespace-nowrap">{row.getValue("beneficiaryAccountNo")}</div>,
+      },
+      {
+        accessorKey: "ifscCode",
+        header: ({ column }) => <SortableHeader column={column} title="IFSC Code" />,
+        cell: ({ row }) => <div className="font-mono text-xs uppercase tracking-wider whitespace-nowrap">{row.getValue("ifscCode")}</div>,
       },
       {
         accessorKey: "beneficiaryName",
@@ -134,8 +141,10 @@ export default function SalaryPaymentSheet() {
           <thead>
             <tr>
               <th style="border: 1px solid #ccc; padding: 8px;">Emp Name</th>
+              <th style="border: 1px solid #ccc; padding: 8px;">Emp Code</th>
               <th style="border: 1px solid #ccc; padding: 8px;">Account No</th>
-              <th style="border: 1px solid #ccc; padding: 8px;">IFSC</th>
+              <th style="border: 1px solid #ccc; padding: 8px;">IFSC Code</th>
+              <th style="border: 1px solid #ccc; padding: 8px;">Beneficiary Name</th>
               <th style="border: 1px solid #ccc; padding: 8px;">Amount</th>
             </tr>
           </thead>
@@ -143,8 +152,10 @@ export default function SalaryPaymentSheet() {
             ${paymentData.map(d => `
               <tr>
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.employeeName}</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">${d.employeeCode}</td>
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.beneficiaryAccountNo}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">${salaryData?.find((s:any) => s.EmployeeCode === d.employeeCode)?.IFSCCode || ''}</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">${d.ifscCode}</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">${d.beneficiaryName}</td>
                 <td style="border: 1px solid #ccc; padding: 8px;">₹${d.amount}</td>
               </tr>
             `).join('')}
@@ -166,13 +177,10 @@ export default function SalaryPaymentSheet() {
     setShowPrintMenu(false);
     if (!paymentData.length) return;
     
-    const headers = ['Employee Name', 'Employee Code', 'Account Number', 'IFSC Code', 'Amount', 'Remarks'];
+    const headers = ['Employee Name', 'Employee Code', 'Account Number', 'IFSC Code', 'Beneficiary Name', 'Amount', 'Remarks'];
     const csvContent = [
       headers.join(','),
-      ...paymentData.map(d => {
-        const ifsc = salaryData?.find((s:any) => s.EmployeeCode === d.employeeCode)?.IFSCCode || '';
-        return `"${d.employeeName}","${d.employeeCode}","${d.beneficiaryAccountNo}","${ifsc}","${d.amount}","${d.remarksBeneficiary}"`;
-      })
+      ...paymentData.map(d => `"${d.employeeName}","${d.employeeCode}","${d.beneficiaryAccountNo}","${d.ifscCode}","${d.beneficiaryName}","${d.amount}","${d.remarksBeneficiary}"`)
     ].join('\n');
     
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -186,11 +194,7 @@ export default function SalaryPaymentSheet() {
     setShowPrintMenu(false);
     if (!paymentData.length) return;
     
-    // Simple pipe-separated format common for bank uploads
-    const txtContent = paymentData.map(d => {
-      const ifsc = salaryData?.find((s:any) => s.EmployeeCode === d.employeeCode)?.IFSCCode || '';
-      return `${d.beneficiaryAccountNo}|${d.amount}|${d.employeeName}|${ifsc}|${d.remarksBeneficiary}`;
-    }).join('\n');
+    const txtContent = paymentData.map(d => `${d.beneficiaryAccountNo}|${d.ifscCode}|${d.amount}|${d.employeeName}|${d.remarksBeneficiary}`).join('\n');
     
     const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
     const link = document.createElement('a');

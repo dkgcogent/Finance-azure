@@ -194,7 +194,32 @@ export default function Summary() {
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e5e7eb" />
                   <XAxis dataKey="name" tickLine={false} axisLine={false} fontSize={12} tickMargin={10} />
                   <YAxis tickFormatter={(val) => `${val}%`} tickLine={false} axisLine={false} fontSize={12} tickMargin={10} />
-                  <Tooltip formatter={(value: any) => [`${value?.toFixed(2)}%`]} cursor={{ fill: '#f3f4f6' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)' }} />
+                  <Tooltip
+                    content={({ active, payload, label }) => {
+                      if (active && payload && payload.length) {
+                        return (
+                          <div className="bg-white dark:bg-slate-900 p-3 rounded-lg shadow-lg border border-slate-200 dark:border-slate-800 space-y-1 text-xs z-50">
+                            <p className="font-bold text-slate-800 dark:text-slate-100 border-b pb-1 mb-1">{label}</p>
+                            {payload.map((entry: any, index: number) => {
+                              const valKey = entry.dataKey.replace(' %', ' Value');
+                              const numVal = entry.payload[valKey];
+                              const formattedNum = typeof numVal === 'number'
+                                ? numVal.toLocaleString('en-IN', { maximumFractionDigits: 0 })
+                                : '0';
+                              return (
+                                <div key={`item-${index}`} className="flex items-center justify-between gap-3 font-semibold" style={{ color: entry.color }}>
+                                  <span>{entry.name}:</span>
+                                  <span>{entry.value?.toFixed(2)}% ({formattedNum})</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      }
+                      return null;
+                    }}
+                    cursor={{ fill: '#f3f4f6' }}
+                  />
                   <Legend iconType="circle" wrapperStyle={{ paddingTop: '20px' }} />
                   <Bar dataKey="Gross Margin %" fill="#3b82f6" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="Corporate Exp %" fill="#ef4444" radius={[4, 4, 0, 0]} />

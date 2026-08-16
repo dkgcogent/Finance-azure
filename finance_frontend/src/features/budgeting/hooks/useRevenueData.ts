@@ -13,7 +13,8 @@ export const useRevenueQuery = (financialYear: string) => {
   return useQuery({
     queryKey: ['revenue', financialYear],
     queryFn: () => getRevenueData(financialYear),
-    staleTime: 5 * 60 * 1000,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 };
 
@@ -23,6 +24,8 @@ export const useSaveRevenueMutation = () => {
     mutationFn: ({ financialYear, groups }: { financialYear: string, groups: any[] }) => saveRevenueData(financialYear, groups),
     onSuccess: (_, { financialYear }) => {
       queryClient.invalidateQueries({ queryKey: ['revenue', financialYear] });
+      queryClient.invalidateQueries({ queryKey: ['budgetSummary'] });
+      queryClient.invalidateQueries({ queryKey: ['actualVsBudget'] });
     },
   });
 };

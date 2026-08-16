@@ -7,7 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Modal } from "@/components/ui/modal"
-import { Plus, Save, Trash2, Download } from "lucide-react"
+import { Plus, Save, Trash2, Download, Loader2 } from "lucide-react"
 
 type MonthKey = 'apr' | 'may' | 'jun' | 'jul' | 'aug' | 'sep' | 'oct' | 'nov' | 'dec' | 'jan' | 'feb' | 'mar';
 
@@ -107,9 +107,9 @@ export default function BankCharges() {
 
   // Column resizing state
   const [colWidths, setColWidths] = useState<Record<string, number>>({
-    head: 250,
-    apr: 60, may: 60, jun: 60, jul: 60, aug: 60, sep: 60, oct: 60, nov: 60, dec: 60, jan: 60, feb: 60, mar: 60,
-    total: 100,
+    head: 220,
+    apr: 65, may: 65, jun: 65, jul: 65, aug: 65, sep: 65, oct: 65, nov: 65, dec: 65, jan: 65, feb: 65, mar: 65,
+    total: 85,
     action: 40
   });
 
@@ -254,7 +254,7 @@ export default function BankCharges() {
             import('xlsx').then(XLSX => {
               const table = document.getElementById('export-table');
               if (table) {
-                const clone = table.cloneNode(true);
+                const clone = table.cloneNode(true) as Element;
                 const inputs = clone.querySelectorAll('input');
                 inputs.forEach(input => {
                   const val = input.value;
@@ -284,95 +284,102 @@ export default function BankCharges() {
 
       <Card className="overflow-hidden">
         <CardContent className="p-0">
-          <div className="overflow-x-auto no-scrollbar">
-            <Table id="export-table" className="border-collapse w-max min-w-full" style={{ tableLayout: 'fixed' }}>
-              <TableHeader>
-                <TableRow className="bg-muted/50 hover:bg-muted/50">
-                  <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.head, minWidth: colWidths.head }}>
-                    Head
-                    <Resizer colKey="head" />
-                  </TableHead>
-                  {dynamicHeaders.map((header, idx) => (
-                    <TableHead key={MONTHS[idx]} className="relative border-r-2 border-slate-300 dark:border-slate-700 text-center text-[10px] sm:text-xs font-bold text-black dark:text-white h-10 px-0.5 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths[MONTHS[idx]], minWidth: colWidths[MONTHS[idx]] }}>
-                      {header}
-                      <Resizer colKey={MONTHS[idx]} />
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center p-16 space-y-4 text-muted-foreground">
+              <Loader2 className="h-10 w-10 animate-spin text-primary" />
+              <p className="text-sm font-medium">Loading bank charges data...</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto no-scrollbar">
+              <Table id="export-table" className="border-collapse w-max min-w-full" style={{ tableLayout: 'fixed' }}>
+                <TableHeader>
+                  <TableRow className="bg-muted/50 hover:bg-muted/50">
+                    <TableHead className="relative border-r-2 border-slate-300 dark:border-slate-700 text-left text-xs font-bold text-black dark:text-white h-10 px-2" style={{ width: colWidths.head, minWidth: colWidths.head }}>
+                      Head
+                      <Resizer colKey="head" />
                     </TableHead>
-                  ))}
-                  <TableHead className="relative text-right text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.total, minWidth: colWidths.total }}>
-                    Total
-                    <Resizer colKey="total" />
-                  </TableHead>
-                  <TableHead className="px-0 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.action, minWidth: colWidths.action }}></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {currentYearData.map((row) => (
-                  <TableRow key={row.id} className="hover:bg-muted/30 group">
-                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
-                      <Input
-                        value={row.head}
-                        onChange={(e) => handleCellChange(row.id, 'head', e.target.value)}
-                        className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
-                      />
-                    </TableCell>
-
-                    {MONTHS.map(month => (
-                      <TableCell key={month} className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                    {dynamicHeaders.map((header, idx) => (
+                      <TableHead key={idx} className="relative border-r-2 border-slate-300 dark:border-slate-700 text-center text-xs font-bold text-black dark:text-white h-10 px-0" style={{ width: colWidths[MONTHS[idx]], minWidth: colWidths[MONTHS[idx]] }}>
+                        {header}
+                        <Resizer colKey={MONTHS[idx]} />
+                      </TableHead>
+                    ))}
+                    <TableHead className="relative text-right text-xs font-bold text-black dark:text-white h-10 px-2 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.total, minWidth: colWidths.total }}>
+                      Total
+                      <Resizer colKey="total" />
+                    </TableHead>
+                    <TableHead className="px-0 bg-gray-200/50 dark:bg-gray-800/50" style={{ width: colWidths.action, minWidth: colWidths.action }}></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {currentYearData.map((row) => (
+                    <TableRow key={row.id} className="hover:bg-muted/30 group">
+                      <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
                         <Input
-                          value={row[month] || ""}
-                          onChange={(e) => handleCellChange(row.id, month, e.target.value)}
-                          onBlur={(e) => {
-                            const val = parseFormattedNumber(e.target.value);
-                            if (val > 0) handleCellChange(row.id, month, formatIndianNumber(val));
-                          }}
-                          className="h-full w-full min-w-0 text-right text-xs bg-transparent border-none shadow-none focus-visible:ring-1 px-1 rounded-none"
+                          value={row.head}
+                          onChange={(e) => handleCellChange(row.id, 'head', e.target.value)}
+                          className="w-full h-full bg-transparent border-none rounded-none px-2 text-xs shadow-none focus-visible:ring-1"
                         />
                       </TableCell>
-                    ))}
 
-                    <TableCell className="text-right font-bold text-xs p-1 truncate align-middle bg-[#ffff99] dark:bg-yellow-600/40 text-black dark:text-white border-r-2 border-slate-300 dark:border-slate-700">
-                      {row.total ?? "-"}
-                    </TableCell>
+                      {MONTHS.map(month => (
+                        <TableCell key={month} className="border-r-2 border-slate-300 dark:border-slate-700 p-0 h-8">
+                          <Input
+                            value={row[month] || ""}
+                            onChange={(e) => handleCellChange(row.id, month, e.target.value)}
+                            onBlur={(e) => {
+                              const val = parseFormattedNumber(e.target.value);
+                              if (val > 0) handleCellChange(row.id, month, formatIndianNumber(val));
+                            }}
+                            className="h-full w-full min-w-0 text-right text-xs bg-transparent border-none shadow-none focus-visible:ring-1 px-1 rounded-none"
+                          />
+                        </TableCell>
+                      ))}
 
-                    <TableCell className="p-0 text-center">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive/70 hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => handleDeleteRow(row.id)}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                      <TableCell className="text-right font-bold text-xs p-1 truncate align-middle bg-[#ffff99] dark:bg-yellow-600/40 text-black dark:text-white border-r-2 border-slate-300 dark:border-slate-700">
+                        {row.total ?? "-"}
+                      </TableCell>
 
-                {currentYearData.length === 0 && (
-                  <TableRow>
-                    <TableCell colSpan={15} className="h-24 text-center text-muted-foreground">
-                      No entries found. Click "Add Head" to start.
-                    </TableCell>
-                  </TableRow>
-                )}
-
-                {/* Grand Total Row */}
-                <TableRow className="bg-[#ffff99] dark:bg-yellow-600/40 font-bold hover:bg-[#ffff99]">
-                  <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-2 text-black dark:text-white text-xs">
-                    Grand Total
-                  </TableCell>
-                  {MONTHS.map(m => (
-                    <TableCell key={m} className="border-r-2 border-slate-300 dark:border-slate-700 text-right p-1 truncate text-black dark:text-white text-xs">
-                      {formatIndianNumber(totals[m])}
-                    </TableCell>
+                      <TableCell className="p-0 text-center">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive/70 hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => handleDeleteRow(row.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                  <TableCell className="text-right p-1 text-black dark:text-white truncate text-xs border-r-2 border-slate-300 dark:border-slate-700">
-                    {formatIndianNumber(totals.total)}
-                  </TableCell>
-                  <TableCell></TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
-          </div>
+
+                  {currentYearData.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={15} className="h-24 text-center text-muted-foreground">
+                        No entries found. Click "Add Head" to start.
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {/* Grand Total Row */}
+                  <TableRow className="bg-[#ffff99] dark:bg-yellow-600/40 font-bold hover:bg-[#ffff99]">
+                    <TableCell className="border-r-2 border-slate-300 dark:border-slate-700 p-2 text-black dark:text-white text-xs">
+                      Grand Total
+                    </TableCell>
+                    {MONTHS.map(m => (
+                      <TableCell key={m} className="border-r-2 border-slate-300 dark:border-slate-700 text-right p-1 truncate text-black dark:text-white text-xs">
+                        {formatIndianNumber(totals[m])}
+                      </TableCell>
+                    ))}
+                    <TableCell className="text-right p-1 text-black dark:text-white truncate text-xs border-r-2 border-slate-300 dark:border-slate-700">
+                      {formatIndianNumber(totals.total)}
+                    </TableCell>
+                    <TableCell></TableCell>
+                  </TableRow>
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -385,9 +392,9 @@ export default function BankCharges() {
           <Plus className="mr-2 h-4 w-4" />
           Add Head
         </Button>
-        <Button variant="outline" onClick={handleSaveChanges}>
-          <Save className="mr-2 h-4 w-4" />
-          Save Changes
+        <Button onClick={handleSaveChanges} disabled={isSaving || isLoading}>
+          {isSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+          {isSaving ? "Saving..." : "Save Changes"}
         </Button>
       </div>
 
