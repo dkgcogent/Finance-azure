@@ -154,6 +154,33 @@ export const fetchCorporateExpenses = async (year: string) => {
     grouped[row.head][row.month] = parseFloat(row.amount);
   });
 
+  // Calculate "HO Salary" automatically from budget_salaries where customer = 'Head Office'
+  const [hoSalaries]: any = await db.query(
+    `SELECT month, SUM(CAST(amount AS DECIMAL(15,2))) AS total_salary 
+     FROM budget_salaries 
+     WHERE financial_year = ? AND (LOWER(TRIM(customer)) = 'head office' OR LOWER(TRIM(customer)) = 'ho')
+     GROUP BY month`,
+    [year]
+  );
+
+  if (!grouped["HO Salary"]) {
+    grouped["HO Salary"] = { head: "HO Salary", year };
+  }
+
+  const hoSalaryMap: Record<string, number> = {};
+  if (Array.isArray(hoSalaries)) {
+    hoSalaries.forEach((s: any) => {
+      if (s.month) {
+        hoSalaryMap[s.month.toLowerCase()] = parseFloat(s.total_salary) || 0;
+      }
+    });
+  }
+
+  MONTHS.forEach(m => {
+    const monthKey = m.toLowerCase();
+    grouped["HO Salary"][monthKey] = hoSalaryMap[monthKey] || 0;
+  });
+
   return Object.values(grouped);
 };
 
@@ -436,27 +463,8 @@ export const fetchSummary = async (year: string) => {
     [year]
   );
 
-  // 4.5 Fetch calculated depreciation from new module
-  const startYearMatch = year.match(/^(\d{4})/);
-  const startYear = startYearMatch ? startYearMatch[1] : null;
-  const endYear = startYear ? (parseInt(startYear) + 1).toString() : null;
-  
-  let depStartYear = 0;
-  let depEndYear = 0;
-  
-  if (startYear && endYear) {
-    const [depRowsStart]: any = await db.query(
-      'SELECT SUM(amount) as total_dep FROM budget_depreciation WHERE year_name = ?',
-      [startYear]
-    );
-    depStartYear = parseFloat(depRowsStart[0]?.total_dep) || 0;
-
-    const [depRowsEnd]: any = await db.query(
-      'SELECT SUM(amount) as total_dep FROM budget_depreciation WHERE year_name = ?',
-      [endYear]
-    );
-    depEndYear = parseFloat(depRowsEnd[0]?.total_dep) || 0;
-  }
+  // 4. Fetch Depreciation
+  const depRows: any = await fetchDepreciation(year);
 
   // Initialize month calculation structure
   const monthlySummary: Record<Month, Record<string, number>> = {} as any;
@@ -490,17 +498,21 @@ export const fetchSummary = async (year: string) => {
     monthlySummary[m].bankInterest += parseFloat(r.total_bank) || 0;
   });
 
+  depRows.forEach((row: any) => {
+    MONTHS.forEach(m => {
+      if (monthlySummary[m]) {
+        monthlySummary[m].depreciation += parseFloat(row[m]) || 0;
+      }
+    });
+  });
+
   summaryInputRows.forEach((r: any) => {
     const m = r.month as Month;
     monthlySummary[m].incomeTax += parseFloat(r.income_tax) || 0;
   });
 
-  // Apply calculated depreciation and income tax to all months
+  // Apply calculated income tax to all months
   MONTHS.forEach(m => {
-    // April to December belong to startYear, January to March belong to endYear
-    const isNextYear = ['jan', 'feb', 'mar'].includes(m);
-    monthlySummary[m].depreciation = isNextYear ? depEndYear : depStartYear;
-    
     const ebita = (monthlySummary[m].revenue - monthlySummary[m].directExpenses) - monthlySummary[m].corporateExpenses - monthlySummary[m].bankInterest;
     monthlySummary[m].incomeTax = (ebita - monthlySummary[m].depreciation) * 0.26;
   });
@@ -607,14 +619,14 @@ export const upsertDepreciation = async (year: string, data: any[]) => {
       }
     }
 
-    // 4. Insert or Update incoming assets
-    const YEARS = Array.from({ length: 11 }, (_, i) => `${2025 + i}`); // '2025' to '2035'
+    // 4. Insert or Update incoming assets with 12 MONTHS
+    const MONTHS = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
 
     for (const row of data) {
       let assetTotal = 0;
 
-      for (const yearName of YEARS) {
-        const amount = row[yearName] || 0.00;
+      for (const monthKey of MONTHS) {
+        const amount = row[monthKey] || 0.00;
 
         await connection.query(
           `INSERT INTO budget_depreciation 
@@ -627,7 +639,7 @@ export const upsertDepreciation = async (year: string, data: any[]) => {
              opening_date = VALUES(opening_date),
              wdv_opening_value = VALUES(wdv_opening_value),
              amount = VALUES(amount)`,
-          [year, row.category, row.assetName, row.depPercentage, row.purchaseDate, row.purchaseValue, row.openingDate, row.wdvOpeningValue, yearName, amount]
+          [year, row.category, row.assetName, row.depPercentage, row.purchaseDate, row.purchaseValue, row.openingDate, row.wdvOpeningValue, monthKey, amount]
         );
         assetTotal += amount;
         moduleTotal += amount;

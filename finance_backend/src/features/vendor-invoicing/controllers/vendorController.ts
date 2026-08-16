@@ -146,8 +146,11 @@ export const getVendorTrips = async (req: Request, res: Response) => {
         const tripExtraKm = Math.max(0, dist - 100);
 
         if (!misGroups[loc]) {
-          const fixedRateVal = commercialRates?.fixed_rate ? parseFloat(commercialRates.fixed_rate) : (t.VFreightFix ? parseFloat(t.VFreightFix) : 0);
-          const addKmRateVal = commercialRates?.additional_rate_per_km ? parseFloat(commercialRates.additional_rate_per_km) : (t.ExtraKMCost && t.ExtraKM ? parseFloat(t.ExtraKMCost) / parseFloat(t.ExtraKM) : 0);
+          const rawFixed = commercialRates?.fixed_rate ? parseFloat(commercialRates.fixed_rate) : (t.VFreightFix ? parseFloat(t.VFreightFix) : 0);
+          const fixedRateVal = isNaN(rawFixed) ? 0 : rawFixed;
+
+          const rawAddRate = commercialRates?.additional_rate_per_km ? parseFloat(commercialRates.additional_rate_per_km) : (t.ExtraKMCost && t.ExtraKM && parseFloat(t.ExtraKM) > 0 ? parseFloat(t.ExtraKMCost) / parseFloat(t.ExtraKM) : 0);
+          const addKmRateVal = isNaN(rawAddRate) ? 0 : rawAddRate;
 
           misGroups[loc] = {
             location: loc,
@@ -169,17 +172,21 @@ export const getVendorTrips = async (req: Request, res: Response) => {
       });
       
       const misData = Object.values(misGroups).map((m: any, idx: number) => {
-        const fixedCost = m.rates * m.noOfTrips;
-        const extraKmCost = m.extraKmRate * m.extraKm;
-        const totalAmount = m.dcmCharges + extraKmCost + fixedCost;
+        const safeRates = isNaN(m.rates) ? 0 : m.rates;
+        const safeExtraKmRate = isNaN(m.extraKmRate) ? 0 : m.extraKmRate;
+        const fixedCost = safeRates * (m.noOfTrips || 0);
+        const extraKmCost = safeExtraKmRate * (m.extraKm || 0);
+        const dcmCharges = isNaN(m.dcmCharges) ? 0 : m.dcmCharges;
+        const totalAmount = fixedCost + extraKmCost + dcmCharges;
 
         return {
           id: idx + 1,
           ...m,
-          fixedCost,
-          extraKmCost,
-          totalAmount,
-          extraKmRate: Number(m.extraKmRate).toFixed(2)
+          rates: safeRates,
+          fixedCost: Number(fixedCost.toFixed(2)),
+          extraKmCost: Number(extraKmCost.toFixed(2)),
+          totalAmount: Number(totalAmount.toFixed(2)),
+          extraKmRate: Number(safeExtraKmRate).toFixed(2)
         };
       });
 
@@ -323,6 +330,16 @@ export const getVendorTrips = async (req: Request, res: Response) => {
   }
 };
 
+export const getNextInvoiceNumber = async (req: Request, res: Response) => {
+  try {
+    const invoiceNumber = await generateVendorInvoiceNumber();
+    res.json({ invoiceNumber });
+  } catch (error) {
+    console.error('Error generating invoice number:', error);
+    res.status(500).json({ error: 'Failed to generate invoice number' });
+  }
+};
+
 export const saveVendorInvoice = async (req: Request, res: Response) => {
   try {
     const { vendorName, amount, linkedCustomerInvoice, financialYear, html, invoiceDate, dueDate } = req.body;
@@ -331,7 +348,7 @@ export const saveVendorInvoice = async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const fy = financialYear || '25-26';
+    const fy = financialYear || '26-27';
     const invoiceNumber = await generateVendorInvoiceNumber();
 
     let finalAzureUrl = null;
@@ -353,7 +370,8 @@ export const saveVendorInvoice = async (req: Request, res: Response) => {
           browser = await puppeteer.launch({ headless: true });
         }
         const page = await browser.newPage();
-        await page.setContent(html, { waitUntil: 'networkidle0' as any });
+        const processedHtml = html.replace(/VN\/26-27\/\d+/gi, invoiceNumber);
+        await page.setContent(processedHtml, { waitUntil: 'networkidle0' as any });
         await page.emulateMediaType('print');
         
         const pdfBuffer = await page.pdf({

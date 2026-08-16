@@ -14,7 +14,7 @@ export const fetchRevenueDirectExpenses = async (year: string) => {
 
   const groupedData: Record<string, any> = {};
 
-  // Load manual direct_expense_pct
+  // Load manual revenue and direct_expense_pct
   manualRows.forEach((row: any) => {
     const groupKey = `${row.customer}-${row.project}-${row.location}`;
     if (!groupedData[groupKey]) {
@@ -27,11 +27,11 @@ export const fetchRevenueDirectExpenses = async (year: string) => {
         directExpensePctMonths: {}
       };
     }
-    // We only care about the manually saved direct_expense_pct, revenue comes from live invoices
+    groupedData[groupKey].revenueMonths[row.month] = parseFloat(row.revenue) || 0;
     groupedData[groupKey].directExpensePctMonths[row.month] = parseFloat(row.direct_expense_pct) || 0;
   });
 
-  // Load live revenue from customer_invoices
+  // Load live revenue from customer_invoices (overrides or adds to manual if present)
   const liveQuery = `
     SELECT 
       ci.customer_name as customer,
@@ -121,18 +121,11 @@ export const upsertRevenueDirectExpenses = async (year: string, groups: any[]) =
         const revenue = group.revenueMonths?.[month] || 0.00;
         const pct = group.directExpensePctMonths?.[month] || 0.00;
 
-        // Note: we don't save incoming manual revenue here since we now calculate it live. 
-        // We only save the direct_expense_pct into the table. 
-        // But for totals logic below, we should still use the live revenue from incoming groups.
-        
-        // Wait, since we are only using this table to store manual PCTs, we can just insert 0 for revenue in the DB, 
-        // or just insert the passed-in revenue which represents the live sum fetched earlier!
-        
         await connection.query(
           `INSERT INTO actual_revenue_direct_expenses 
             (financial_year, customer, project, location, month, revenue, direct_expense_pct) 
            VALUES (?, ?, ?, ?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE direct_expense_pct = VALUES(direct_expense_pct)`,
+           ON DUPLICATE KEY UPDATE revenue = VALUES(revenue), direct_expense_pct = VALUES(direct_expense_pct)`,
           [year, customer, project, location, month, revenue, pct]
         );
         groupTotalRevenue += revenue;
@@ -559,22 +552,7 @@ export const fetchSummary = async (year: string) => {
     [year]
   );
 
-  // 4.5 Fetch calculated depreciation from new module
-  const depRows: any = await fetchDepreciation(year);
-  
-  const startYearMatch = year.match(/^(\d{4})/);
-  const startYear = startYearMatch ? startYearMatch[1] : null;
-  const endYear = startYear ? (parseInt(startYear) + 1).toString() : null;
-  
-  let depStartYear = 0;
-  let depEndYear = 0;
-  
-  if (startYear && endYear) {
-    depRows.forEach((r: any) => {
-      depStartYear += parseFloat(r[startYear]) || 0;
-      depEndYear += parseFloat(r[endYear]) || 0;
-    });
-  }
+
 
   // Initialize month calculation structure
   const monthlySummary: Record<Month, Record<string, number>> = {} as any;
@@ -616,12 +594,19 @@ export const fetchSummary = async (year: string) => {
     monthlySummary[m].incomeTax += parseFloat(r.income_tax) || 0;
   });
 
-  // Apply calculated depreciation and income tax to all months
+  // 4. Fetch Depreciation (includes manual entries + HRMS live assets)
+  const depRows: any = await fetchDepreciation(year);
+
+  depRows.forEach((row: any) => {
+    MONTHS.forEach(m => {
+      if (monthlySummary[m]) {
+        monthlySummary[m].depreciation += parseFloat(row[m]) || 0;
+      }
+    });
+  });
+
+  // Apply calculated income tax to all months
   MONTHS.forEach(m => {
-    // April to December belong to startYear, January to March belong to endYear
-    const isNextYear = ['jan', 'feb', 'mar'].includes(m);
-    monthlySummary[m].depreciation = isNextYear ? depEndYear : depStartYear;
-    
     const ebita = (monthlySummary[m].revenue - monthlySummary[m].directExpenses) - monthlySummary[m].corporateExpenses - monthlySummary[m].bankInterest;
     monthlySummary[m].incomeTax = (ebita - monthlySummary[m].depreciation) * 0.26;
   });
@@ -703,7 +688,7 @@ export const fetchDepreciation = async (year: string) => {
     'SELECT * FROM hrms_assets WHERE is_active = 1'
   );
 
-  const YEARS = Array.from({ length: 11 }, (_, i) => `${2025 + i}`); // '2025' to '2035'
+  const MONTHS = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
 
   hrmsRows.forEach((asset: any) => {
     const assetName = `${asset.name} (HRMS)`;
@@ -711,7 +696,6 @@ export const fetchDepreciation = async (year: string) => {
     const pDate = new Date(asset.purchase_date);
     const pValue = parseFloat(asset.purchase_price) || 0;
     const depRate = parseFloat(asset.depreciation_rate) || 0;
-    const depAmountPerYear = pValue * (depRate / 100);
 
     if (!grouped[key]) {
       grouped[key] = {
@@ -726,24 +710,12 @@ export const fetchDepreciation = async (year: string) => {
       };
     }
     
-    // Auto-calculate straight-line depreciation for each year column
-    const pMonth = pDate.getMonth() + 1; // 1-12
-    const pCalendarYear = pDate.getFullYear();
-    const pFinancialYear = pMonth < 4 ? pCalendarYear - 1 : pCalendarYear;
-
-    let currentWdv = pValue;
     const rate = depRate / 100;
+    const annualDep = pValue * rate;
+    const monthlyDep = annualDep / 12;
 
-    YEARS.forEach((yrStr) => {
-      const yr = parseInt(yrStr);
-      if (yr < pFinancialYear) {
-        grouped[key][yrStr] = 0;
-      } else {
-        const annualDep = currentWdv * rate;
-        const monthlyDep = annualDep / 12;
-        grouped[key][yrStr] = monthlyDep;
-        currentWdv -= annualDep;
-      }
+    MONTHS.forEach((m) => {
+      grouped[key][m] = Math.round(monthlyDep);
     });
   });
 
@@ -774,15 +746,15 @@ export const upsertDepreciation = async (year: string, data: any[]) => {
       }
     }
 
-    const YEARS = Array.from({ length: 11 }, (_, i) => `${2025 + i}`); // '2025' to '2035'
+    const MONTHS = ['apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 'jan', 'feb', 'mar'];
 
     for (const row of data) {
       let assetTotal = 0;
       
       const isHrms = row.assetName.endsWith('(HRMS)');
 
-      for (const yearName of YEARS) {
-        const amount = row[yearName] || 0.00;
+      for (const monthKey of MONTHS) {
+        const amount = row[monthKey] || 0.00;
 
         if (!isHrms) {
           await connection.query(
@@ -796,7 +768,7 @@ export const upsertDepreciation = async (year: string, data: any[]) => {
              opening_date = VALUES(opening_date),
              wdv_opening_value = VALUES(wdv_opening_value),
              amount = VALUES(amount)`,
-          [year, row.category, row.assetName, row.depPercentage, row.purchaseDate, row.purchaseValue, row.openingDate, row.wdvOpeningValue, yearName, amount]
+          [year, row.category, row.assetName, row.depPercentage, row.purchaseDate, row.purchaseValue, row.openingDate, row.wdvOpeningValue, monthKey, amount]
         );
         }
         assetTotal += amount;
