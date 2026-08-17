@@ -50,10 +50,36 @@ export const invoiceController = {
 
   saveCustomerCNDN: async (req: Request, res: Response) => {
     try {
-      const { noteNumber, type, customerInvoiceRef, amount, date, reason, remarks, html } = req.body;
+      const { noteNumber, type, customerInvoiceRef, amount, subtotal, igst, cgst, sgst, grandTotal, gstType, date, reason, remarks, html } = req.body;
 
       if (!noteNumber || !type || !customerInvoiceRef || amount === undefined) {
         return res.status(400).json({ error: 'Missing required fields' });
+      }
+
+      // Ensure columns exist on customer_cndn_notes table
+      try {
+        const [existingCols]: any = await pool.query("SHOW COLUMNS FROM customer_cndn_notes");
+        const colNames = existingCols.map((c: any) => c.Field);
+        if (!colNames.includes('subtotal')) {
+          await pool.query("ALTER TABLE customer_cndn_notes ADD COLUMN subtotal DECIMAL(15,2) NULL");
+        }
+        if (!colNames.includes('igst')) {
+          await pool.query("ALTER TABLE customer_cndn_notes ADD COLUMN igst DECIMAL(15,2) DEFAULT 0.00");
+        }
+        if (!colNames.includes('cgst')) {
+          await pool.query("ALTER TABLE customer_cndn_notes ADD COLUMN cgst DECIMAL(15,2) DEFAULT 0.00");
+        }
+        if (!colNames.includes('sgst')) {
+          await pool.query("ALTER TABLE customer_cndn_notes ADD COLUMN sgst DECIMAL(15,2) DEFAULT 0.00");
+        }
+        if (!colNames.includes('grand_total')) {
+          await pool.query("ALTER TABLE customer_cndn_notes ADD COLUMN grand_total DECIMAL(15,2) NULL");
+        }
+        if (!colNames.includes('gst_type')) {
+          await pool.query("ALTER TABLE customer_cndn_notes ADD COLUMN gst_type VARCHAR(50) NULL");
+        }
+      } catch (e) {
+        console.error("Error ensuring customer_cndn_notes columns:", e);
       }
 
       let finalAzureUrl = null;
@@ -103,11 +129,18 @@ export const invoiceController = {
         }
       }
 
+      const subtotalVal = subtotal !== undefined ? Number(subtotal) : Number(amount);
+      const igstVal = igst !== undefined ? Number(igst) : (gstType === 'without_gst' ? 0 : Math.round(subtotalVal * 0.18 * 100) / 100);
+      const cgstVal = cgst !== undefined ? Number(cgst) : 0;
+      const sgstVal = sgst !== undefined ? Number(sgst) : 0;
+      const grandTotalVal = grandTotal !== undefined ? Number(grandTotal) : (subtotalVal + igstVal + cgstVal + sgstVal);
+      const gstTypeVal = gstType || (igstVal > 0 ? 'with_gst' : 'without_gst');
+
       const insertQuery = `
         INSERT INTO customer_cndn_notes (
-          note_number, type, customer_invoice_ref, amount, date, reason, remarks, azure_blob_url
+          note_number, type, customer_invoice_ref, amount, subtotal, igst, cgst, sgst, grand_total, gst_type, date, reason, remarks, azure_blob_url
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `;
 
       const cndnDate = date ? new Date(date) : new Date();
@@ -116,7 +149,13 @@ export const invoiceController = {
         noteNumber,
         type,
         customerInvoiceRef,
-        amount,
+        subtotalVal,
+        subtotalVal,
+        igstVal,
+        cgstVal,
+        sgstVal,
+        grandTotalVal,
+        gstTypeVal,
         cndnDate,
         reason,
         remarks,

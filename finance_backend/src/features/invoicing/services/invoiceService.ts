@@ -616,6 +616,12 @@ export const invoiceService = {
         cndn.amount as cnAmt,
         cndn.type as cnType,
         cndn.note_number as cnNo,
+        cndn.subtotal as cn_subtotal,
+        cndn.igst as cn_igst,
+        cndn.cgst as cn_cgst,
+        cndn.sgst as cn_sgst,
+        cndn.grand_total as cn_grand_total,
+        cndn.gst_type as cn_gst_type,
 
         p.ProjectName as linkedProjectName,
         p.Location as linkedLocation,
@@ -682,11 +688,21 @@ export const invoiceService = {
       
       // CN Amount calculation
       const cnNo = row.cnNo || "";
-      const cnAmtBase = Number(Number(row.cnAmt || 0).toFixed(2));
-      const hasIgstOnInvoice = IGST > 0;
-      const cnIgst = hasIgstOnInvoice ? Number((cnAmtBase * 0.18).toFixed(2)) : 0;
-      const cnCgst = 0;
-      const cnSgst = 0;
+      const cnAmtBase = Number(Number(row.cn_subtotal !== null && row.cn_subtotal !== undefined ? row.cn_subtotal : (row.cnAmt || 0)).toFixed(2));
+      
+      let cnIgst = 0;
+      if (row.cn_igst !== null && row.cn_igst !== undefined) {
+        cnIgst = Number(Number(row.cn_igst).toFixed(2));
+      } else if (row.cn_gst_type === 'without_gst') {
+        cnIgst = 0;
+      } else if (IGST > 0) {
+        cnIgst = Number((cnAmtBase * 0.18).toFixed(2));
+      } else {
+        cnIgst = 0;
+      }
+
+      const cnCgst = Number(Number(row.cn_cgst || 0).toFixed(2));
+      const cnSgst = Number(Number(row.cn_sgst || 0).toFixed(2));
       const cnTotGst = Number((cnIgst + cnCgst + cnSgst).toFixed(2));
       const cnTotAmt = Number((cnAmtBase + cnTotGst).toFixed(2));
       
