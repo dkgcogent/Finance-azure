@@ -588,6 +588,64 @@ export const invoiceService = {
   },
 
   getGlobalInvoiceMaster: async () => {
+    // Ensure customer_cndn_notes columns exist on database
+    try {
+      const [existingCols]: any = await db.query("SHOW COLUMNS FROM customer_cndn_notes");
+      const colNames = existingCols.map((c: any) => c.Field);
+      if (!colNames.includes('subtotal')) {
+        await db.query("ALTER TABLE customer_cndn_notes ADD COLUMN subtotal DECIMAL(15,2) NULL");
+      }
+      if (!colNames.includes('igst')) {
+        await db.query("ALTER TABLE customer_cndn_notes ADD COLUMN igst DECIMAL(15,2) DEFAULT 0.00");
+      }
+      if (!colNames.includes('cgst')) {
+        await db.query("ALTER TABLE customer_cndn_notes ADD COLUMN cgst DECIMAL(15,2) DEFAULT 0.00");
+      }
+      if (!colNames.includes('sgst')) {
+        await db.query("ALTER TABLE customer_cndn_notes ADD COLUMN sgst DECIMAL(15,2) DEFAULT 0.00");
+      }
+      if (!colNames.includes('grand_total')) {
+        await db.query("ALTER TABLE customer_cndn_notes ADD COLUMN grand_total DECIMAL(15,2) NULL");
+      }
+      if (!colNames.includes('gst_type')) {
+        await db.query("ALTER TABLE customer_cndn_notes ADD COLUMN gst_type VARCHAR(50) NULL");
+      }
+    } catch (e) {
+      console.error("Error ensuring customer_cndn_notes columns in getGlobalInvoiceMaster:", e);
+    }
+
+    // Ensure customer_invoices columns exist on database
+    try {
+      const [existingCols]: any = await db.query("SHOW COLUMNS FROM customer_invoices");
+      const colNames = existingCols.map((c: any) => c.Field);
+      if (!colNames.includes('project')) {
+        await db.query("ALTER TABLE customer_invoices ADD COLUMN project VARCHAR(255) NULL");
+      }
+      if (!colNames.includes('project_work')) {
+        await db.query("ALTER TABLE customer_invoices ADD COLUMN project_work VARCHAR(255) NULL");
+      }
+      if (!colNames.includes('location')) {
+        await db.query("ALTER TABLE customer_invoices ADD COLUMN location VARCHAR(255) NULL");
+      }
+      if (!colNames.includes('hsn')) {
+        await db.query("ALTER TABLE customer_invoices ADD COLUMN hsn VARCHAR(100) NULL");
+      }
+      if (!colNames.includes('subtotal')) {
+        await db.query("ALTER TABLE customer_invoices ADD COLUMN subtotal DECIMAL(15,2) NULL");
+      }
+      if (!colNames.includes('igst')) {
+        await db.query("ALTER TABLE customer_invoices ADD COLUMN igst DECIMAL(15,2) NULL");
+      }
+      if (!colNames.includes('grand_total')) {
+        await db.query("ALTER TABLE customer_invoices ADD COLUMN grand_total DECIMAL(15,2) NULL");
+      }
+      if (!colNames.includes('cust_gst')) {
+        await db.query("ALTER TABLE customer_invoices ADD COLUMN cust_gst VARCHAR(100) NULL");
+      }
+    } catch (e) {
+      console.error("Error ensuring customer_invoices columns in getGlobalInvoiceMaster:", e);
+    }
+
     // We fetch customer invoices and join with TMS billing and customer CNDN notes
     // We also fetch payment collections for these billings.
     const query = `
