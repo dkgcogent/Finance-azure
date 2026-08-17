@@ -242,11 +242,22 @@ export default function CustomerInvoice() {
     const projectWorkValue = invoiceSubProject || 
       (selectedProjectName && selectedLocationName ? `${selectedProjectName} ${selectedLocationName}` : (invoiceType ? `${selectedProjectName} ${invoiceType}` : selectedProjectName));
 
+    const dbGSTNo = reportData?.misData?.find((row: any) => row.GSTNo)?.GSTNo || 
+      reportData?.fallbackCustomerGSTIN || 
+      (selectedCustomer as any)?.gstNo || 
+      (selectedCustomer as any)?.gstin || 
+      (selectedCustomer as any)?.GSTNo || 
+      "";
+
     createInvoiceMutation.mutate({
       customerId: invoiceCustomer,
       options: {
         customerName: selectedCustomer?.name?.split(' (')[0] || invoiceCustomer,
-        amount: grandTotal,
+        amount: totalFreight,
+        subtotal: totalFreight,
+        igst: totalTax,
+        grandTotal: grandTotal,
+        custGst: dbGSTNo,
         financialYear,
         tripType: invoiceType,
         html: htmlPayload,

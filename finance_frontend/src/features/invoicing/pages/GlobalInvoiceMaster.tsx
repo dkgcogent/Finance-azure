@@ -307,6 +307,21 @@ export default function GlobalInvoiceMaster() {
 
                            const isEditable = col.bg !== 'bg-[#e6b8b7]';
 
+                           const rawVal = row[col.key];
+                           const isNumericCol = [
+                             'invAmt', 'igst', 'sgst', 'cgst', 'totGst', 'totInvAmt',
+                             'tds', 'payable', 'pay1Amt', 'pay2Amt', 'pay3Amt', 'gstPayAmt',
+                             'totPay', 'cnAmt', 'cnIgst', 'cnCgst', 'cnSgst', 'cnTotGst', 'cnTotAmt', 'outstanding'
+                           ].includes(col.key);
+                           
+                           let displayVal = rawVal || "";
+                           if (isNumericCol && rawVal !== null && rawVal !== undefined && rawVal !== '') {
+                             const num = Number(String(rawVal).replace(/,/g, ''));
+                             if (!isNaN(num)) {
+                               displayVal = num.toFixed(2);
+                             }
+                           }
+
                            return (
                             <td 
                               key={col.key} 
@@ -326,7 +341,7 @@ export default function GlobalInvoiceMaster() {
                                 setMasterRows(newRows);
                               }}
                             >
-                              {row[col.key] || ""}
+                              {displayVal}
                             </td>
                            )
                         })}

@@ -32,6 +32,10 @@ export const createCustomerInvoice = async (
   options?: {
     customerName?: string;
     amount?: number;
+    subtotal?: number;
+    igst?: number;
+    grandTotal?: number;
+    custGst?: string;
     financialYear?: string;
     tripType?: string;
     html?: string;
@@ -61,7 +65,11 @@ export const createCustomerInvoice = async (
     customerName: options?.customerName || invoiceCustomer || "Customer",
     date: options?.invoiceDate || new Date().toISOString().split('T')[0],
     dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-    amount: options?.amount || 0,
+    amount: options?.subtotal !== undefined ? options.subtotal : (options?.amount || 0),
+    subtotal: options?.subtotal !== undefined ? options.subtotal : (options?.amount || 0),
+    igst: options?.igst || 0,
+    grandTotal: options?.grandTotal || 0,
+    custGst: options?.custGst || "",
     status: "Pending",
     format: options?.tripType === 'Fixed' ? "Fixed SLA Format" : "Adhoc Format",
     financialYear: fy,
