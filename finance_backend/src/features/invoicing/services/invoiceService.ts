@@ -749,11 +749,9 @@ export const invoiceService = {
       const cnAmtBase = Number(Number(row.cn_subtotal !== null && row.cn_subtotal !== undefined ? row.cn_subtotal : (row.cnAmt || 0)).toFixed(2));
       
       let cnIgst = 0;
-      if (row.cn_igst !== null && row.cn_igst !== undefined) {
+      if (row.cn_igst !== null && row.cn_igst !== undefined && Number(row.cn_igst) > 0) {
         cnIgst = Number(Number(row.cn_igst).toFixed(2));
-      } else if (row.cn_gst_type === 'without_gst') {
-        cnIgst = 0;
-      } else if (IGST > 0) {
+      } else if (row.cn_gst_type === 'with_gst' && (row.cn_igst === null || row.cn_igst === undefined)) {
         cnIgst = Number((cnAmtBase * 0.18).toFixed(2));
       } else {
         cnIgst = 0;
