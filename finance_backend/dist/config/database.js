@@ -15,4 +15,9 @@ exports.db = promise_1.default.createPool({
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
+    ...(process.env.DB_SSL === 'true' && {
+        ssl: {
+            rejectUnauthorized: false
+        }
+    })
 });

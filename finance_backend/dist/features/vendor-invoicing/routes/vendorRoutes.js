@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const vendorController_1 = require("../controllers/vendorController");
+const router = (0, express_1.Router)();
+router.get('/', vendorController_1.getVendors);
+router.get('/trips', vendorController_1.getVendorTrips);
+router.get('/next-number', vendorController_1.getNextInvoiceNumber);
+router.post('/save', vendorController_1.saveVendorInvoice);
+router.get('/invoices', vendorController_1.getVendorInvoicesList);
+router.post('/cndn/save', vendorController_1.saveVendorCNDN);
+router.get('/cndn/list', vendorController_1.getVendorCNDNList);
+exports.default = router;

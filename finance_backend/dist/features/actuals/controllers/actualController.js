@@ -34,7 +34,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getAvailableYears = exports.saveDepreciation = exports.getDepreciation = exports.getSummary = exports.saveBankCharges = exports.getBankCharges = exports.saveSalaries = exports.getSalaries = exports.saveCorporateExpenses = exports.getCorporateExpenses = exports.saveRevenueDirectExpenses = exports.getRevenueDirectExpenses = void 0;
-const budgetService = __importStar(require("../services/budgetService"));
+const actualService = __importStar(require("../services/actualService"));
 // ==========================================
 // 1. REVENUE & DIRECT EXPENSES INTEGRATION
 // ==========================================
@@ -43,7 +43,7 @@ const getRevenueDirectExpenses = async (req, res) => {
     if (!year)
         return res.status(400).json({ message: 'Year parameter is required' });
     try {
-        const data = await budgetService.fetchRevenueDirectExpenses(year);
+        const data = await actualService.fetchRevenueDirectExpenses(year);
         res.json(data);
     }
     catch (error) {
@@ -57,7 +57,7 @@ const saveRevenueDirectExpenses = async (req, res) => {
         return res.status(400).json({ message: 'Invalid request payload' });
     }
     try {
-        const response = await budgetService.upsertRevenueDirectExpenses(year, groups);
+        const response = await actualService.upsertRevenueDirectExpenses(year, groups);
         res.json(response);
     }
     catch (error) {
@@ -73,7 +73,7 @@ const getCorporateExpenses = async (req, res) => {
     if (!year)
         return res.status(400).json({ message: 'Year is required' });
     try {
-        const data = await budgetService.fetchCorporateExpenses(year);
+        const data = await actualService.fetchCorporateExpenses(year);
         res.json(data);
     }
     catch (error) {
@@ -86,7 +86,7 @@ const saveCorporateExpenses = async (req, res) => {
     if (!year || !Array.isArray(data))
         return res.status(400).json({ message: 'Invalid payload' });
     try {
-        const response = await budgetService.upsertCorporateExpenses(year, data);
+        const response = await actualService.upsertCorporateExpenses(year, data);
         res.json(response);
     }
     catch (error) {
@@ -102,7 +102,7 @@ const getSalaries = async (req, res) => {
     if (!year)
         return res.status(400).json({ message: 'Year is required' });
     try {
-        const data = await budgetService.fetchSalaries(year);
+        const data = await actualService.fetchSalaries(year);
         res.json(data);
     }
     catch (error) {
@@ -115,7 +115,7 @@ const saveSalaries = async (req, res) => {
     if (!year || !Array.isArray(data))
         return res.status(400).json({ message: 'Invalid payload' });
     try {
-        const response = await budgetService.upsertSalaries(year, data);
+        const response = await actualService.upsertSalaries(year, data);
         res.json(response);
     }
     catch (error) {
@@ -131,7 +131,7 @@ const getBankCharges = async (req, res) => {
     if (!year)
         return res.status(400).json({ message: 'Year is required' });
     try {
-        const data = await budgetService.fetchBankCharges(year);
+        const data = await actualService.fetchBankCharges(year);
         res.json(data);
     }
     catch (error) {
@@ -144,7 +144,7 @@ const saveBankCharges = async (req, res) => {
     if (!year || !Array.isArray(data))
         return res.status(400).json({ message: 'Invalid payload' });
     try {
-        const response = await budgetService.upsertBankCharges(year, data);
+        const response = await actualService.upsertBankCharges(year, data);
         res.json(response);
     }
     catch (error) {
@@ -160,7 +160,7 @@ const getSummary = async (req, res) => {
     if (!year)
         return res.status(400).json({ message: 'Year parameter is required' });
     try {
-        const data = await budgetService.fetchSummary(year);
+        const data = await actualService.fetchSummary(year);
         res.json(data);
     }
     catch (error) {
@@ -176,7 +176,7 @@ const getDepreciation = async (req, res) => {
     if (!year)
         return res.status(400).json({ message: 'Year is required' });
     try {
-        const data = await budgetService.fetchDepreciation(year);
+        const data = await actualService.fetchDepreciation(year);
         res.json(data);
     }
     catch (error) {
@@ -189,7 +189,7 @@ const saveDepreciation = async (req, res) => {
     if (!year || !Array.isArray(data))
         return res.status(400).json({ message: 'Invalid payload' });
     try {
-        const response = await budgetService.upsertDepreciation(year, data);
+        const response = await actualService.upsertDepreciation(year, data);
         res.json(response);
     }
     catch (error) {
@@ -202,7 +202,7 @@ exports.saveDepreciation = saveDepreciation;
 // ==========================================
 const getAvailableYears = async (req, res) => {
     try {
-        const data = await budgetService.fetchAvailableYears();
+        const data = await actualService.fetchAvailableYears();
         res.json(data);
     }
     catch (error) {

@@ -1,0 +1,20 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const actualController_1 = require("../controllers/actualController");
+const router = (0, express_1.Router)();
+// Protect all routes - Temporarily disabled until auth is implemented
+// router.use(authenticateToken);
+router.get('/financial-years', actualController_1.getAvailableYears);
+router.get('/revenue-direct-expense', actualController_1.getRevenueDirectExpenses);
+router.post('/revenue-direct-expense', actualController_1.saveRevenueDirectExpenses);
+router.get('/corporate-expenses', actualController_1.getCorporateExpenses);
+router.post('/corporate-expenses', actualController_1.saveCorporateExpenses);
+router.get('/salaries', actualController_1.getSalaries);
+router.post('/salaries', actualController_1.saveSalaries);
+router.get('/bank-charges', actualController_1.getBankCharges);
+router.post('/bank-charges', actualController_1.saveBankCharges);
+router.get('/depreciation', actualController_1.getDepreciation);
+router.post('/depreciation', actualController_1.saveDepreciation);
+router.get('/summary', actualController_1.getSummary);
+exports.default = router;

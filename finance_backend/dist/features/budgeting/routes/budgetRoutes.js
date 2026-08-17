@@ -14,5 +14,7 @@ router.get('/salaries', budgetController_1.getSalaries);
 router.post('/salaries', budgetController_1.saveSalaries);
 router.get('/bank-charges', budgetController_1.getBankCharges);
 router.post('/bank-charges', budgetController_1.saveBankCharges);
+router.get('/depreciation', budgetController_1.getDepreciation);
+router.post('/depreciation', budgetController_1.saveDepreciation);
 router.get('/summary', budgetController_1.getSummary);
 exports.default = router;
