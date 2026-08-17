@@ -228,6 +228,20 @@ export default function CustomerInvoice() {
       </html>
     ` : undefined;
 
+    const selectedProjectName = selectedProject?.name || 
+      projects.find((p: any) => String(p.id) === String(invoiceProject) || p.name === invoiceProject)?.name ||
+      reportData?.misData?.[0]?.projectName ||
+      (typeof invoiceProject === 'string' ? invoiceProject : "");
+
+    const selectedLocationName = locations.find((l: any) => String(l.id) === String(invoiceLocation) || l.name === invoiceLocation)?.name ||
+      reportData?.misData?.[0]?.consignorName ||
+      reportData?.misData?.[0]?.ourBranch ||
+      reportData?.misData?.[0]?.ourState ||
+      (typeof invoiceLocation === 'string' ? invoiceLocation : "");
+
+    const projectWorkValue = invoiceSubProject || 
+      (selectedProjectName && selectedLocationName ? `${selectedProjectName} ${selectedLocationName}` : (invoiceType ? `${selectedProjectName} ${invoiceType}` : selectedProjectName));
+
     createInvoiceMutation.mutate({
       customerId: invoiceCustomer,
       options: {
@@ -236,7 +250,11 @@ export default function CustomerInvoice() {
         financialYear,
         tripType: invoiceType,
         html: htmlPayload,
-        invoiceDate
+        invoiceDate,
+        project: selectedProjectName,
+        projectWork: projectWorkValue,
+        location: selectedLocationName,
+        hsn: "996511"
       }
     }, {
       onSuccess: () => {

@@ -50,6 +50,26 @@ export const invoiceService = {
   },
 
   saveInvoice: async (data: any) => {
+    // Ensure columns exist on customer_invoices table
+    try {
+      const [existingCols]: any = await db.query("SHOW COLUMNS FROM customer_invoices");
+      const colNames = existingCols.map((c: any) => c.Field);
+      if (!colNames.includes('project')) {
+        await db.query("ALTER TABLE customer_invoices ADD COLUMN project VARCHAR(255) NULL");
+      }
+      if (!colNames.includes('project_work')) {
+        await db.query("ALTER TABLE customer_invoices ADD COLUMN project_work VARCHAR(255) NULL");
+      }
+      if (!colNames.includes('location')) {
+        await db.query("ALTER TABLE customer_invoices ADD COLUMN location VARCHAR(255) NULL");
+      }
+      if (!colNames.includes('hsn')) {
+        await db.query("ALTER TABLE customer_invoices ADD COLUMN hsn VARCHAR(100) NULL");
+      }
+    } catch (e) {
+      console.error("Error ensuring customer_invoices columns:", e);
+    }
+
     const {
       html,
       invoiceNumber,
@@ -59,7 +79,11 @@ export const invoiceService = {
       amount,
       status,
       format,
-      financialYear
+      financialYear,
+      project,
+      projectWork,
+      location,
+      hsn
     } = data;
 
     let azureBlobUrl = null;
@@ -121,13 +145,56 @@ export const invoiceService = {
     // Insert into DB
     const [result]: any = await db.query(
       `INSERT INTO customer_invoices 
-       (invoice_number, customer_name, date, due_date, amount, status, format, financial_year, azure_blob_url)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [invoiceNumber, customerName, date, dueDate, amount, status || 'Pending', format, financialYear, azureBlobUrl]
+       (invoice_number, customer_name, date, due_date, amount, status, format, financial_year, azure_blob_url, project, project_work, location, hsn)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        invoiceNumber,
+        customerName,
+        date,
+        dueDate,
+        amount,
+        status || 'Pending',
+        format,
+        financialYear,
+        azureBlobUrl,
+        project || null,
+        projectWork || null,
+        location || null,
+        hsn || '996511'
+      ]
     );
 
+    const invoiceId = result.insertId;
+
+    // Auto-populate global_invoice_manual_data for Global Invoice Master
+    try {
+      await db.query(
+        `INSERT INTO global_invoice_manual_data (
+          invoice_id, custName, proj, projWork, loc, hsn, subDate
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON DUPLICATE KEY UPDATE
+          custName = VALUES(custName),
+          proj = VALUES(proj),
+          projWork = VALUES(projWork),
+          loc = VALUES(loc),
+          hsn = VALUES(hsn),
+          subDate = VALUES(subDate)`,
+        [
+          invoiceId,
+          customerName || null,
+          project || null,
+          projectWork || null,
+          location || null,
+          hsn || '996511',
+          date || null
+        ]
+      );
+    } catch (e) {
+      console.error("Error auto-populating global_invoice_manual_data:", e);
+    }
+
     return {
-      id: result.insertId,
+      id: invoiceId,
       invoiceNumber,
       azureBlobUrl
     };
@@ -507,32 +574,38 @@ export const invoiceService = {
         ci.due_date as dueDate,
         ci.amount as invAmt,
         ci.financial_year as finYear,
+        ci.project as ci_project,
+        ci.project_work as ci_project_work,
+        ci.location as ci_location,
+        ci.hsn as ci_hsn,
         
-        b.BillingID as billingId,
-        b.ProjectID as projectId,
-        b.PaymentStatus as payStatus,
-        b.GSTRate as gstRate,
+        MIN(b.BillingID) as billingId,
+        MIN(b.ProjectID) as projectId,
+        MIN(b.PaymentStatus) as payStatus,
+        MIN(b.GSTRate) as gstRate,
         
-        cndn.amount as cnAmt,
-        cndn.type as cnType,
-        cndn.note_number as cnNo,
+        MIN(cndn.amount) as cnAmt,
+        MIN(cndn.type) as cnType,
+        MIN(cndn.note_number) as cnNo,
 
-        p.ProjectName as linkedProjectName,
-        p.Location as linkedLocation,
+        MIN(p.ProjectName) as linkedProjectName,
+        MIN(p.Location) as linkedLocation,
 
-        m.jmsStatus as m_jmsStatus, m.jmsNum as m_jmsNum, m.jmsDate as m_jmsDate, m.subDate as m_subDate,
-        m.custName as m_custName, m.proj as m_proj, m.projWork as m_projWork, m.loc as m_loc,
-        m.revHead as m_revHead, m.hsn as m_hsn, m.invTo as m_invTo, m.rcm as m_rcm,
-        m.pay1Amt as m_pay1Amt, m.pay1Date as m_pay1Date, m.pay1Adv as m_pay1Adv,
-        m.pay2Amt as m_pay2Amt, m.pay2Date as m_pay2Date, m.pay2Adv as m_pay2Adv,
-        m.pay3Amt as m_pay3Amt, m.pay3Date as m_pay3Date, m.pay3Adv as m_pay3Adv,
-        m.gstPayAmt as m_gstPayAmt, m.gstPayDate as m_gstPayDate, m.totPay as m_totPay, m.payStatus as m_payStatus
+        MIN(m.jmsStatus) as m_jmsStatus, MIN(m.jmsNum) as m_jmsNum, MIN(m.jmsDate) as m_jmsDate, MIN(m.subDate) as m_subDate,
+        MIN(m.custName) as m_custName, MIN(m.proj) as m_proj, MIN(m.projWork) as m_projWork, MIN(m.loc) as m_loc,
+        MIN(m.revHead) as m_revHead, MIN(m.hsn) as m_hsn, MIN(m.invTo) as m_invTo, MIN(m.rcm) as m_rcm,
+        MIN(m.pay1Amt) as m_pay1Amt, MIN(m.pay1Date) as m_pay1Date, MIN(m.pay1Adv) as m_pay1Adv,
+        MIN(m.pay2Amt) as m_pay2Amt, MIN(m.pay2Date) as m_pay2Date, MIN(m.pay2Adv) as m_pay2Adv,
+        MIN(m.pay3Amt) as m_pay3Amt, MIN(m.pay3Date) as m_pay3Date, MIN(m.pay3Adv) as m_pay3Adv,
+        MIN(m.gstPayAmt) as m_gstPayAmt, MIN(m.gstPayDate) as m_gstPayDate, MIN(m.totPay) as m_totPay, MIN(m.payStatus) as m_payStatus
         
       FROM customer_invoices ci
       LEFT JOIN billing b ON ci.invoice_number = b.InvoiceNo
-      LEFT JOIN project p ON ci.customer_name = p.ProjectName
+      LEFT JOIN customer c ON (ci.customer_name = c.Name OR ci.customer_name = c.MasterCustomerName)
+      LEFT JOIN project p ON (b.ProjectID = p.ProjectID OR p.CustomerID = c.CustomerID)
       LEFT JOIN customer_cndn_notes cndn ON ci.invoice_number = cndn.customer_invoice_ref AND cndn.status = 'Approved'
       LEFT JOIN global_invoice_manual_data m ON ci.id = m.invoice_id
+      GROUP BY ci.id, ci.invoice_number, ci.customer_name, ci.date, ci.due_date, ci.amount, ci.financial_year, ci.project, ci.project_work, ci.location, ci.hsn
       ORDER BY ci.created_at DESC
     `;
 
@@ -604,13 +677,13 @@ export const invoiceService = {
         jmsNum: row.m_jmsNum || "",
         jmsDate: row.m_jmsDate || "",
         subDate: row.m_subDate || dateObj.toISOString().split('T')[0],
-        custName: row.m_custName || row.custName || "",
-        proj: row.m_proj || row.linkedProjectName || "",
+        custName: (row.m_custName && String(row.m_custName).trim() !== '') ? row.m_custName : (row.custName || ""),
+        proj: (row.m_proj && String(row.m_proj).trim() !== '') ? row.m_proj : (row.ci_project || row.linkedProjectName || ""),
         creditDays: "30",
-        projWork: row.m_projWork || "",
-        loc: row.m_loc || row.linkedLocation || "",
-        revHead: row.m_revHead || "",
-        hsn: row.m_hsn || "",
+        projWork: (row.m_projWork && String(row.m_projWork).trim() !== '') ? row.m_projWork : (row.ci_project_work || (row.ci_project ? `${row.ci_project} ${row.ci_location || ''}`.trim() : (row.linkedProjectName ? `${row.linkedProjectName} ${row.ci_location || row.linkedLocation || ''}`.trim() : ""))),
+        loc: (row.m_loc && String(row.m_loc).trim() !== '') ? row.m_loc : (row.ci_location || row.linkedLocation || ""),
+        revHead: (row.m_revHead && String(row.m_revHead).trim() !== '') ? row.m_revHead : "Transportation Of Goods by Road",
+        hsn: (row.m_hsn && String(row.m_hsn).trim() !== '') ? row.m_hsn : (row.ci_hsn || "996511"),
         invTo: row.m_invTo || row.custName || "",
         rcm: row.m_rcm || "",
         custGst: "",

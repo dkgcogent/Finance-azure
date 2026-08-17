@@ -36,6 +36,10 @@ export const createCustomerInvoice = async (
     tripType?: string;
     html?: string;
     invoiceDate?: string;
+    project?: string;
+    projectWork?: string;
+    location?: string;
+    hsn?: string;
   }
 ) => {
   const fy = options?.financialYear || '2025-2026';
@@ -61,7 +65,11 @@ export const createCustomerInvoice = async (
     status: "Pending",
     format: options?.tripType === 'Fixed' ? "Fixed SLA Format" : "Adhoc Format",
     financialYear: fy,
-    html: modifiedHtml
+    html: modifiedHtml,
+    project: options?.project,
+    projectWork: options?.projectWork,
+    location: options?.location,
+    hsn: options?.hsn || "996511"
   };
 
   const response = await fetch(`${API_BASE_URL}/invoicing`, {
