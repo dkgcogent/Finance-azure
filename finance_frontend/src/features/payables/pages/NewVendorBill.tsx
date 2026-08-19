@@ -100,11 +100,90 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
   const pdfRef = useRef<HTMLDivElement>(null)
   const annexurePdfRef = useRef<HTMLDivElement>(null)
 
-  const handleDownloadAnnexurePDF = () => {
-    if (!annexurePdfRef.current) return;
+  const getInvoiceHtmlContent = (element: HTMLElement | null, title: string = 'Vendor Invoice', isLandscape: boolean = false) => {
+    if (!element) return '';
 
     const styleElements = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'));
     const stylesHtml = styleElements.map(el => el.outerHTML).join('\n');
+
+    let cssStyles = '';
+    try {
+      const sheets = Array.from(document.styleSheets);
+      for (const sheet of sheets) {
+        try {
+          const rules = Array.from(sheet.cssRules || []);
+          cssStyles += rules.map(r => r.cssText).join('\n') + '\n';
+        } catch (e) {
+          // Ignore cross-origin stylesheet errors if any
+        }
+      }
+    } catch (e) {
+      console.error('Error reading stylesheets', e);
+    }
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${title}</title>
+          <script src="https://cdn.tailwindcss.com"></script>
+          ${stylesHtml}
+          <style>
+            ${cssStyles}
+            *, ::before, ::after { box-sizing: border-box; }
+            body { 
+              background: white !important; 
+              margin: 0; 
+              padding: 20px; 
+              font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+              color: #000000 !important;
+              -webkit-print-color-adjust: exact !important; 
+              print-color-adjust: exact !important; 
+            }
+            .bg-yellow-300 { background-color: #fde047 !important; }
+            .border-black { border-color: #000000 !important; }
+            .grid { display: grid !important; }
+            .grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+            .flex { display: flex !important; }
+            .flex-1 { flex: 1 1 0% !important; }
+            .flex-col { flex-direction: column !important; }
+            .justify-between { justify-content: space-between !important; }
+            .justify-center { justify-content: center !important; }
+            .justify-end { justify-content: flex-end !important; }
+            .items-center { align-items: center !important; }
+            .relative { position: relative !important; }
+            .absolute { position: absolute !important; }
+            .text-center { text-align: center !important; }
+            .text-right { text-align: right !important; }
+            .text-left { text-align: left !important; }
+            .font-bold { font-weight: 700 !important; }
+            .font-medium { font-weight: 500 !important; }
+            .font-normal { font-weight: 400 !important; }
+            .underline { text-decoration: underline !important; }
+            .line-through { text-decoration: line-through !important; }
+            table { width: 100%; border-collapse: collapse !important; }
+            @media print {
+              @page { size: ${isLandscape ? 'A4 landscape' : 'A4 portrait'}; margin: 5mm; }
+              body { padding: 0; margin: 0; }
+              * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+              table { page-break-inside: auto; }
+              tr    { page-break-inside: avoid; page-break-after: auto; }
+            }
+          </style>
+        </head>
+        <body>
+          <div style="width: 100%; ${isLandscape ? '' : 'max-width: 900px;'} margin: 0 auto; ${isLandscape ? 'zoom: 0.75;' : 'zoom: 0.85;'}">
+            ${element.innerHTML}
+          </div>
+        </body>
+      </html>
+    `;
+  };
+
+  const handleDownloadAnnexurePDF = () => {
+    if (!annexurePdfRef.current) return;
+    const htmlContent = getInvoiceHtmlContent(annexurePdfRef.current, 'Annexure', true);
 
     const iframe = document.createElement('iframe');
     iframe.style.position = 'absolute';
@@ -116,31 +195,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     const doc = iframe.contentWindow?.document;
     if (doc) {
       doc.open();
-      doc.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Annexure</title>
-            ${stylesHtml}
-            <style>
-              body { background: white !important; margin: 0; padding: 0; font-family: sans-serif; }
-              @media print {
-                @page { size: A4 landscape; margin: 5mm; }
-                body { padding: 5mm; margin: 0; }
-                * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-                table { page-break-inside: auto; }
-                tr    { page-break-inside: avoid; page-break-after: auto; }
-              }
-            </style>
-          </head>
-          <body>
-            <div style="width: 100%; margin: 0 auto; zoom: 0.75;">
-              <h2 style="text-align: center; margin-bottom: 20px;">Annexure</h2>
-              ${annexurePdfRef.current.innerHTML}
-            </div>
-          </body>
-        </html>
-      `);
+      doc.write(htmlContent);
       doc.close();
 
       iframe.contentWindow?.focus();
@@ -157,9 +212,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
 
   const handleDownloadPDF = () => {
     if (!pdfRef.current) return;
-
-    const styleElements = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'));
-    const stylesHtml = styleElements.map(el => el.outerHTML).join('\n');
+    const htmlContent = getInvoiceHtmlContent(pdfRef.current, 'Vendor Invoice', false);
 
     const iframe = document.createElement('iframe');
     iframe.style.position = 'absolute';
@@ -171,30 +224,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     const doc = iframe.contentWindow?.document;
     if (doc) {
       doc.open();
-      doc.write(`
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Vendor Invoice</title>
-            ${stylesHtml}
-            <style>
-              body { background: white !important; margin: 0; padding: 0; }
-              @media print {
-                @page { size: A4 portrait; margin: 0; }
-                body { padding: 10mm; margin: 0; }
-                * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-                table { page-break-inside: auto; }
-                tr    { page-break-inside: avoid; page-break-after: auto; }
-              }
-            </style>
-          </head>
-          <body>
-            <div style="width: 100%; max-width: 900px; margin: 0 auto; zoom: 0.85;">
-              ${pdfRef.current.innerHTML}
-            </div>
-          </body>
-        </html>
-      `);
+      doc.write(htmlContent);
       doc.close();
 
       iframe.contentWindow?.focus();
@@ -227,32 +257,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
         const amount = isNaN(rawTotal) ? 0 : Number(rawTotal.toFixed(2));
         const vendorNameStr = vendorTrips?.vendorInfo?.VendorName || vendors?.find(v => v.id.toString() === vendorId)?.name || 'Unknown Vendor';
 
-        const styleElements = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]'));
-        const stylesHtml = styleElements.map(el => el.outerHTML).join('\n');
-        const htmlPayload = pdfRef.current ? `
-          <!DOCTYPE html>
-          <html>
-            <head>
-              <title>Vendor Invoice</title>
-              ${stylesHtml}
-              <style>
-                body { background: white !important; margin: 0; padding: 0; }
-                @media print {
-                  @page { size: A4 portrait; margin: 0; }
-                  body { padding: 10mm; margin: 0; }
-                  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-                  table { page-break-inside: auto; }
-                  tr    { page-break-inside: avoid; page-break-after: auto; }
-                }
-              </style>
-            </head>
-            <body>
-              <div style="width: 100%; max-width: 900px; margin: 0 auto; zoom: 0.85;">
-                ${pdfRef.current.innerHTML}
-              </div>
-            </body>
-          </html>
-        ` : undefined;
+        const htmlPayload = pdfRef.current ? getInvoiceHtmlContent(pdfRef.current, 'Vendor Invoice', false) : undefined;
 
         const res = await createInvoiceMutation.mutateAsync({
           vendorName: vendorNameStr,
