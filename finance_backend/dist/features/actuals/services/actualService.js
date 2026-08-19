@@ -29,14 +29,13 @@ const fetchRevenueDirectExpenses = async (year) => {
     const liveQuery = `
     SELECT 
       ci.customer_name as customer,
-      p.ProjectName as project,
-      p.Location as location,
+      COALESCE(NULLIF(TRIM(ci.project), ''), '-') as project,
+      COALESCE(NULLIF(TRIM(ci.location), ''), '-') as location,
       MONTH(ci.date) as invoice_month,
       SUM(ci.amount) as revenue
     FROM customer_invoices ci
-    LEFT JOIN project p ON ci.customer_name = p.ProjectName
     WHERE ci.financial_year = ?
-    GROUP BY ci.customer_name, p.ProjectName, p.Location, invoice_month
+    GROUP BY ci.customer_name, ci.project, ci.location, MONTH(ci.date)
   `;
     const [liveRows] = await database_1.db.query(liveQuery, [year]);
     const monthMap = {

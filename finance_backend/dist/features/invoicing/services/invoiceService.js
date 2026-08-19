@@ -99,11 +99,23 @@ exports.invoiceService = {
             if (!colNames.includes('hsn')) {
                 await database_1.db.query("ALTER TABLE customer_invoices ADD COLUMN hsn VARCHAR(100) NULL");
             }
+            if (!colNames.includes('subtotal')) {
+                await database_1.db.query("ALTER TABLE customer_invoices ADD COLUMN subtotal DECIMAL(15,2) NULL");
+            }
+            if (!colNames.includes('igst')) {
+                await database_1.db.query("ALTER TABLE customer_invoices ADD COLUMN igst DECIMAL(15,2) NULL");
+            }
+            if (!colNames.includes('grand_total')) {
+                await database_1.db.query("ALTER TABLE customer_invoices ADD COLUMN grand_total DECIMAL(15,2) NULL");
+            }
+            if (!colNames.includes('cust_gst')) {
+                await database_1.db.query("ALTER TABLE customer_invoices ADD COLUMN cust_gst VARCHAR(100) NULL");
+            }
         }
         catch (e) {
             console.error("Error ensuring customer_invoices columns:", e);
         }
-        const { html, invoiceNumber, customerName, date, dueDate, amount, status, format, financialYear, project, projectWork, location, hsn } = data;
+        const { html, invoiceNumber, customerName, date, dueDate, amount, subtotal, igst, grandTotal, custGst, status, format, financialYear, project, projectWork, location, hsn } = data;
         let azureBlobUrl = null;
         if (html) {
             try {
@@ -152,15 +164,23 @@ exports.invoiceService = {
                 throw error;
             }
         }
+        const subtotalVal = subtotal !== undefined ? Number(subtotal) : Number(amount || 0);
+        const igstVal = igst !== undefined ? Number(igst) : Math.round(subtotalVal * 0.18 * 100) / 100;
+        const grandTotalVal = grandTotal !== undefined ? Number(grandTotal) : (subtotalVal + igstVal);
+        const custGstVal = custGst || null;
         // Insert into DB
         const [result] = await database_1.db.query(`INSERT INTO customer_invoices 
-       (invoice_number, customer_name, date, due_date, amount, status, format, financial_year, azure_blob_url, project, project_work, location, hsn)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
+       (invoice_number, customer_name, date, due_date, amount, subtotal, igst, grand_total, cust_gst, status, format, financial_year, azure_blob_url, project, project_work, location, hsn)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
             invoiceNumber,
             customerName,
             date,
             dueDate,
-            amount,
+            subtotalVal,
+            subtotalVal,
+            igstVal,
+            grandTotalVal,
+            custGstVal,
             status || 'Pending',
             format,
             financialYear,
@@ -520,6 +540,64 @@ exports.invoiceService = {
         };
     },
     getGlobalInvoiceMaster: async () => {
+        // Ensure customer_cndn_notes columns exist on database
+        try {
+            const [existingCols] = await database_1.db.query("SHOW COLUMNS FROM customer_cndn_notes");
+            const colNames = existingCols.map((c) => c.Field);
+            if (!colNames.includes('subtotal')) {
+                await database_1.db.query("ALTER TABLE customer_cndn_notes ADD COLUMN subtotal DECIMAL(15,2) NULL");
+            }
+            if (!colNames.includes('igst')) {
+                await database_1.db.query("ALTER TABLE customer_cndn_notes ADD COLUMN igst DECIMAL(15,2) DEFAULT 0.00");
+            }
+            if (!colNames.includes('cgst')) {
+                await database_1.db.query("ALTER TABLE customer_cndn_notes ADD COLUMN cgst DECIMAL(15,2) DEFAULT 0.00");
+            }
+            if (!colNames.includes('sgst')) {
+                await database_1.db.query("ALTER TABLE customer_cndn_notes ADD COLUMN sgst DECIMAL(15,2) DEFAULT 0.00");
+            }
+            if (!colNames.includes('grand_total')) {
+                await database_1.db.query("ALTER TABLE customer_cndn_notes ADD COLUMN grand_total DECIMAL(15,2) NULL");
+            }
+            if (!colNames.includes('gst_type')) {
+                await database_1.db.query("ALTER TABLE customer_cndn_notes ADD COLUMN gst_type VARCHAR(50) NULL");
+            }
+        }
+        catch (e) {
+            console.error("Error ensuring customer_cndn_notes columns in getGlobalInvoiceMaster:", e);
+        }
+        // Ensure customer_invoices columns exist on database
+        try {
+            const [existingCols] = await database_1.db.query("SHOW COLUMNS FROM customer_invoices");
+            const colNames = existingCols.map((c) => c.Field);
+            if (!colNames.includes('project')) {
+                await database_1.db.query("ALTER TABLE customer_invoices ADD COLUMN project VARCHAR(255) NULL");
+            }
+            if (!colNames.includes('project_work')) {
+                await database_1.db.query("ALTER TABLE customer_invoices ADD COLUMN project_work VARCHAR(255) NULL");
+            }
+            if (!colNames.includes('location')) {
+                await database_1.db.query("ALTER TABLE customer_invoices ADD COLUMN location VARCHAR(255) NULL");
+            }
+            if (!colNames.includes('hsn')) {
+                await database_1.db.query("ALTER TABLE customer_invoices ADD COLUMN hsn VARCHAR(100) NULL");
+            }
+            if (!colNames.includes('subtotal')) {
+                await database_1.db.query("ALTER TABLE customer_invoices ADD COLUMN subtotal DECIMAL(15,2) NULL");
+            }
+            if (!colNames.includes('igst')) {
+                await database_1.db.query("ALTER TABLE customer_invoices ADD COLUMN igst DECIMAL(15,2) NULL");
+            }
+            if (!colNames.includes('grand_total')) {
+                await database_1.db.query("ALTER TABLE customer_invoices ADD COLUMN grand_total DECIMAL(15,2) NULL");
+            }
+            if (!colNames.includes('cust_gst')) {
+                await database_1.db.query("ALTER TABLE customer_invoices ADD COLUMN cust_gst VARCHAR(100) NULL");
+            }
+        }
+        catch (e) {
+            console.error("Error ensuring customer_invoices columns in getGlobalInvoiceMaster:", e);
+        }
         // We fetch customer invoices and join with TMS billing and customer CNDN notes
         // We also fetch payment collections for these billings.
         const query = `
@@ -530,39 +608,49 @@ exports.invoiceService = {
         ci.date as invDate,
         ci.due_date as dueDate,
         ci.amount as invAmt,
+        ci.subtotal as ci_subtotal,
+        ci.igst as ci_igst,
+        ci.grand_total as ci_grand_total,
+        ci.cust_gst as ci_cust_gst,
         ci.financial_year as finYear,
         ci.project as ci_project,
         ci.project_work as ci_project_work,
         ci.location as ci_location,
         ci.hsn as ci_hsn,
         
-        MIN(b.BillingID) as billingId,
-        MIN(b.ProjectID) as projectId,
-        MIN(b.PaymentStatus) as payStatus,
-        MIN(b.GSTRate) as gstRate,
+        b.BillingID as billingId,
+        b.ProjectID as projectId,
+        b.PaymentStatus as payStatus,
+        b.GSTRate as gstRate,
         
-        MIN(cndn.amount) as cnAmt,
-        MIN(cndn.type) as cnType,
-        MIN(cndn.note_number) as cnNo,
+        cndn.amount as cnAmt,
+        cndn.type as cnType,
+        cndn.note_number as cnNo,
+        cndn.subtotal as cn_subtotal,
+        cndn.igst as cn_igst,
+        cndn.cgst as cn_cgst,
+        cndn.sgst as cn_sgst,
+        cndn.grand_total as cn_grand_total,
+        cndn.gst_type as cn_gst_type,
 
-        MIN(p.ProjectName) as linkedProjectName,
-        MIN(p.Location) as linkedLocation,
+        p.ProjectName as linkedProjectName,
+        p.Location as linkedLocation,
+        c.GSTNo as customer_table_gst,
 
-        MIN(m.jmsStatus) as m_jmsStatus, MIN(m.jmsNum) as m_jmsNum, MIN(m.jmsDate) as m_jmsDate, MIN(m.subDate) as m_subDate,
-        MIN(m.custName) as m_custName, MIN(m.proj) as m_proj, MIN(m.projWork) as m_projWork, MIN(m.loc) as m_loc,
-        MIN(m.revHead) as m_revHead, MIN(m.hsn) as m_hsn, MIN(m.invTo) as m_invTo, MIN(m.rcm) as m_rcm,
-        MIN(m.pay1Amt) as m_pay1Amt, MIN(m.pay1Date) as m_pay1Date, MIN(m.pay1Adv) as m_pay1Adv,
-        MIN(m.pay2Amt) as m_pay2Amt, MIN(m.pay2Date) as m_pay2Date, MIN(m.pay2Adv) as m_pay2Adv,
-        MIN(m.pay3Amt) as m_pay3Amt, MIN(m.pay3Date) as m_pay3Date, MIN(m.pay3Adv) as m_pay3Adv,
-        MIN(m.gstPayAmt) as m_gstPayAmt, MIN(m.gstPayDate) as m_gstPayDate, MIN(m.totPay) as m_totPay, MIN(m.payStatus) as m_payStatus
+        m.jmsStatus as m_jmsStatus, m.jmsNum as m_jmsNum, m.jmsDate as m_jmsDate, m.subDate as m_subDate,
+        m.custName as m_custName, m.proj as m_proj, m.projWork as m_projWork, m.loc as m_loc,
+        m.revHead as m_revHead, m.hsn as m_hsn, m.invTo as m_invTo, m.rcm as m_rcm,
+        m.pay1Amt as m_pay1Amt, m.pay1Date as m_pay1Date, m.pay1Adv as m_pay1Adv,
+        m.pay2Amt as m_pay2Amt, m.pay2Date as m_pay2Date, m.pay2Adv as m_pay2Adv,
+        m.pay3Amt as m_pay3Amt, m.pay3Date as m_pay3Date, m.pay3Adv as m_pay3Adv,
+        m.gstPayAmt as m_gstPayAmt, m.gstPayDate as m_gstPayDate, m.totPay as m_totPay, m.payStatus as m_payStatus
         
       FROM customer_invoices ci
-      LEFT JOIN billing b ON ci.invoice_number = b.InvoiceNo
       LEFT JOIN customer c ON (ci.customer_name = c.Name OR ci.customer_name = c.MasterCustomerName)
-      LEFT JOIN project p ON (b.ProjectID = p.ProjectID OR p.CustomerID = c.CustomerID)
-      LEFT JOIN customer_cndn_notes cndn ON ci.invoice_number = cndn.customer_invoice_ref AND cndn.status = 'Approved'
+      LEFT JOIN billing b ON ci.invoice_number = b.InvoiceNo
+      LEFT JOIN project p ON (b.ProjectID = p.ProjectID OR ci.customer_name = p.ProjectName)
+      LEFT JOIN customer_cndn_notes cndn ON (ci.invoice_number = cndn.customer_invoice_ref AND (cndn.status IS NULL OR cndn.status != 'Rejected'))
       LEFT JOIN global_invoice_manual_data m ON ci.id = m.invoice_id
-      GROUP BY ci.id, ci.invoice_number, ci.customer_name, ci.date, ci.due_date, ci.amount, ci.financial_year, ci.project, ci.project_work, ci.location, ci.hsn
       ORDER BY ci.created_at DESC
     `;
         const [rows] = await database_1.db.query(query);
@@ -581,27 +669,43 @@ exports.invoiceService = {
             });
         }
         return rows.map((row) => {
-            const invAmt = Number(row.invAmt) || 0;
-            // User requested calculations
-            const IGST = Math.round(invAmt * 0.18);
-            const SGST = 0; // Assuming IGST covers full 18%, or logic could split it. Let's just use IGST.
+            // Subtotal / Taxable Amount (e.g. 9002)
+            const invAmt = Number((row.ci_subtotal !== null && row.ci_subtotal !== undefined ? Number(row.ci_subtotal) : (Number(row.invAmt) || 0)).toFixed(2));
+            // IGST (e.g. 1620.36)
+            const IGST = Number((row.ci_igst !== null && row.ci_igst !== undefined ? Number(row.ci_igst) : (invAmt * 0.18)).toFixed(2));
+            const SGST = 0;
             const CGST = 0;
-            const totGst = IGST + SGST + CGST;
-            const totInvAmt = totGst + invAmt;
-            const tds = Math.round(invAmt * 0.02);
-            const payable = totInvAmt - tds;
+            const totGst = Number((IGST + SGST + CGST).toFixed(2));
+            // Grand Total after tax (e.g. 10622.36)
+            const totInvAmt = Number((row.ci_grand_total !== null && row.ci_grand_total !== undefined ? Number(row.ci_grand_total) : (invAmt + totGst)).toFixed(2));
+            const tds = Number((invAmt * 0.02).toFixed(2));
+            const payable = Number((totInvAmt - tds).toFixed(2));
+            // Customer GST No
+            const custGst = (row.ci_cust_gst && String(row.ci_cust_gst).trim() !== '') ? row.ci_cust_gst :
+                (row.customer_table_gst && String(row.customer_table_gst).trim() !== '') ? row.customer_table_gst :
+                    "";
             // CN Amount calculation
-            const cnAmtBase = Number(row.cnAmt) || 0;
-            const cnIgst = Math.round(cnAmtBase * 0.18);
-            const cnCgst = 0;
-            const cnSgst = 0;
-            const cnTotGst = cnIgst + cnCgst + cnSgst;
-            const cnTotAmt = cnAmtBase + cnTotGst;
+            const cnNo = row.cnNo || "";
+            const cnAmtBase = Number(Number(row.cn_subtotal !== null && row.cn_subtotal !== undefined ? row.cn_subtotal : (row.cnAmt || 0)).toFixed(2));
+            let cnIgst = 0;
+            if (row.cn_igst !== null && row.cn_igst !== undefined && Number(row.cn_igst) > 0) {
+                cnIgst = Number(Number(row.cn_igst).toFixed(2));
+            }
+            else if (row.cn_gst_type === 'with_gst' && (row.cn_igst === null || row.cn_igst === undefined)) {
+                cnIgst = Number((cnAmtBase * 0.18).toFixed(2));
+            }
+            else {
+                cnIgst = 0;
+            }
+            const cnCgst = Number(Number(row.cn_cgst || 0).toFixed(2));
+            const cnSgst = Number(Number(row.cn_sgst || 0).toFixed(2));
+            const cnTotGst = Number((cnIgst + cnCgst + cnSgst).toFixed(2));
+            const cnTotAmt = Number((cnAmtBase + cnTotGst).toFixed(2));
             // Payments
             const billPayments = paymentsMap[row.billingId] || [];
-            const totPay = billPayments.reduce((sum, p) => sum + Number(p.PaymentAmount), 0);
+            const totPay = Number(billPayments.reduce((sum, p) => sum + Number(p.PaymentAmount), 0).toFixed(2));
             // Outstanding
-            const outstanding = payable - totPay - cnTotAmt;
+            const outstanding = Number((payable - totPay - cnTotAmt).toFixed(2));
             // Extract Month/Year from invoice date
             const dateObj = row.invDate ? new Date(row.invDate) : new Date();
             const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -630,7 +734,7 @@ exports.invoiceService = {
                 hsn: (row.m_hsn && String(row.m_hsn).trim() !== '') ? row.m_hsn : (row.ci_hsn || "996511"),
                 invTo: row.m_invTo || row.custName || "",
                 rcm: row.m_rcm || "",
-                custGst: "",
+                custGst: custGst,
                 // Formatted amounts
                 invAmt: invAmt,
                 igst: IGST,
@@ -655,7 +759,7 @@ exports.invoiceService = {
                 gstPayDate: row.m_gstPayDate || "",
                 totPay: row.m_totPay || totPay,
                 // CN/DN
-                cnNo: row.cnNo || "",
+                cnNo: cnNo,
                 cnAmt: cnAmtBase,
                 cnIgst: cnIgst,
                 cnCgst: cnCgst,
