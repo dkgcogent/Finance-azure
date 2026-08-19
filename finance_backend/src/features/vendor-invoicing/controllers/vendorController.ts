@@ -293,29 +293,6 @@ export const getVendorTrips = async (req: Request, res: Response) => {
         misGroups[veh].extKmCharge += (Number(t.ExtraKMCost) || 0);
         misGroups[veh].toll += ((Number(t.TollExpenses) || 0) + (Number(t.ParkingCharges) || 0));
         misGroups[veh].dcm += (Number(t.DCMCharges) || 0);
-
-        // Calculate actual duty hours for this trip
-        let tripDutyHours = 0;
-        if (t.TotalDutyHours && !isNaN(Number(t.TotalDutyHours)) && Number(t.TotalDutyHours) > 0) {
-          tripDutyHours = Number(t.TotalDutyHours);
-        } else if (t.ArrivalTimeAtHub && t.OutTimeFromHub) {
-          const inStr = String(t.ArrivalTimeAtHub).trim();
-          const outStr = String(t.OutTimeFromHub).trim();
-          const inParts = inStr.split(':').map(Number);
-          const outParts = outStr.split(':').map(Number);
-          if (inParts.length >= 2 && outParts.length >= 2 && !isNaN(inParts[0]) && !isNaN(outParts[0])) {
-            const inMins = inParts[0] * 60 + (inParts[1] || 0);
-            const outMins = outParts[0] * 60 + (outParts[1] || 0);
-            let diffMins = outMins - inMins;
-            if (diffMins < 0) diffMins += 24 * 60; // handle overnight duty
-            tripDutyHours = diffMins / 60;
-          }
-        }
-
-        const agreedHrs = misGroups[veh].hrs || 12;
-        if (tripDutyHours > agreedHrs) {
-          misGroups[veh].extHr += Math.floor(tripDutyHours - agreedHrs);
-        }
       });
       
       const misData = Object.values(misGroups).map((m: any, idx: number) => {
