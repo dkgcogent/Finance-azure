@@ -258,12 +258,12 @@ export default function ImprestApprovals() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            {/* <div className="flex items-center gap-2">
               <Button variant="outline" size="sm">
                 <Download className="mr-2 h-4 w-4" />
                 Export Log
               </Button>
-            </div>
+            </div> */}
           </div>
 
           <Card>

@@ -9,15 +9,58 @@ type SummaryRow = {
   id: string;
   date: string;
   head: string;
-  transfer: number | '';
-  expense: number | '';
-  passAmount: number | '';
+  transfer: number | string;
+  expense: number | string;
+  passAmount: number | string;
 }
 
 const getToday = () => {
   const today = new Date();
   return today.toISOString().split('T')[0];
 }
+
+const computeSummaryRows = (dataRows: SummaryRow[]) => {
+  const rowsToProcess = dataRows.length > 0 ? dataRows : [{ id: 'empty-1', date: getToday(), head: '', transfer: '', expense: '', passAmount: '' }];
+  let runningBalance = 0;
+  const chronologicalRows = [...rowsToProcess].reverse();
+  
+  const computedChronological = chronologicalRows.map((row) => {
+    const opening = runningBalance;
+    const transferNum = Number(row.transfer) || 0;
+    const passAmountNum = Number(row.passAmount) || 0;
+    const balance = opening + transferNum - passAmountNum;
+    runningBalance = balance;
+    return { ...row, opening, balance };
+  });
+
+  return computedChronological.reverse();
+};
+
+const exportSingleTableToCSV = (title: string, rows: any[]) => {
+  const labels = ["Date", "Head", "Opening", "Transfer", "Expense", "Pass Amount", "Balance"];
+  const csvLines = [
+    labels.map(l => `"${l}"`).join(","),
+    ...rows.map((row: any) => [
+      `"${row.date || ''}"`,
+      `"${(row.head || '').replace(/"/g, '""')}"`,
+      `"${row.opening ?? 0}"`,
+      `"${row.transfer ?? 0}"`,
+      `"${row.expense ?? 0}"`,
+      `"${row.passAmount ?? 0}"`,
+      `"${row.balance ?? 0}"`
+    ].join(","))
+  ];
+
+  const blob = new Blob([csvLines.join("\n")], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", `${title.replace(/\s+/g, '_')}_${getToday()}.csv`);
+  link.style.visibility = 'hidden';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
 
 function SummaryTable({ title, icon: Icon, data = [] }: { title: string, icon: React.ElementType, data?: SummaryRow[] }) {
   const [rows, setRows] = useState<SummaryRow[]>([])
@@ -34,22 +77,11 @@ function SummaryTable({ title, icon: Icon, data = [] }: { title: string, icon: R
     setRows(rows.map(r => r.id === id ? { ...r, [field]: value } : r))
   }
 
-  // Calculate opening and balance sequentially from oldest to newest
-  let runningBalance = 0;
-  // Reverse to process chronologically (oldest first)
-  const chronologicalRows = [...rows].reverse();
-  
-  const computedChronological = chronologicalRows.map((row) => {
-    const opening = runningBalance;
-    const transferNum = Number(row.transfer) || 0;
-    const passAmountNum = Number(row.passAmount) || 0;
-    const balance = opening + transferNum - passAmountNum;
-    runningBalance = balance;
-    return { ...row, opening, balance };
-  });
+  const computedRows = computeSummaryRows(rows);
 
-  // Reverse back to display newest first
-  const computedRows = computedChronological.reverse();
+  const handleExport = () => {
+    exportSingleTableToCSV(title, computedRows);
+  };
 
   return (
     <Card className="mb-8 shadow-sm hover:shadow-md transition-shadow duration-200 border-zinc-200/60">
@@ -60,7 +92,12 @@ function SummaryTable({ title, icon: Icon, data = [] }: { title: string, icon: R
           </div>
           <CardTitle className="text-xl text-zinc-800">{title}</CardTitle>
         </div>
-        <Button variant="outline" size="sm" className="h-8 bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 hover:text-blue-700 hover:border-blue-300 transition-colors">
+        <Button 
+          variant="outline" 
+          size="sm" 
+          onClick={handleExport}
+          className="h-8 bg-blue-50 text-blue-600 border-blue-200 hover:bg-blue-100 hover:text-blue-700 hover:border-blue-300 transition-colors cursor-pointer"
+        >
           <Download className="mr-2 h-3.5 w-3.5" />
           Export
         </Button>
@@ -160,10 +197,10 @@ export default function ImprestList() {
   }, []);
 
   // Map API data to SummaryRow format
-  const mappedData = allData.map(item => ({
+  const mappedData: SummaryRow[] = allData.map(item => ({
     id: String(item.id),
     date: item.date?.split('T')[0] ?? getToday(),
-    head: item.head,
+    head: item.head ?? '',
     transfer: Number(item.amount) || '',
     expense: '', // Assuming expense isn't stored in basic imprest API directly yet, or is calculated elsewhere
     passAmount: Number(item.pass_amount) || ''
@@ -177,6 +214,44 @@ export default function ImprestList() {
     const isAdhoc = d.head.toLowerCase().includes("adhoc");
     return !isAdhoc;
   });
+
+  const handleExportAllReport = () => {
+    const sections = [
+      { title: "General Imprest", data: computeSummaryRows(generalData) },
+      { title: "Adhoc Advance", data: computeSummaryRows(adhocAdvanceData) },
+      { title: "Adhoc Balance", data: computeSummaryRows(adhocBalanceData) },
+    ];
+
+    const labels = ["Date", "Head", "Opening", "Transfer", "Expense", "Pass Amount", "Balance"];
+    let csvLines: string[] = [];
+
+    sections.forEach(sec => {
+      csvLines.push(`"${sec.title}"`);
+      csvLines.push(labels.map(l => `"${l}"`).join(","));
+      sec.data.forEach((row: any) => {
+        csvLines.push([
+          `"${row.date || ''}"`,
+          `"${(row.head || '').replace(/"/g, '""')}"`,
+          `"${row.opening ?? 0}"`,
+          `"${row.transfer ?? 0}"`,
+          `"${row.expense ?? 0}"`,
+          `"${row.passAmount ?? 0}"`,
+          `"${row.balance ?? 0}"`
+        ].join(","));
+      });
+      csvLines.push("");
+    });
+
+    const blob = new Blob([csvLines.join("\n")], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Summary_Dashboard_Report_${getToday()}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="flex-1 space-y-8 pb-12 max-w-7xl mx-auto px-2">
@@ -197,7 +272,7 @@ export default function ImprestList() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <Button className="bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all rounded-full px-6">
+          <Button onClick={handleExportAllReport} className="bg-blue-600 text-white hover:bg-blue-700 shadow-sm transition-all rounded-full px-6 cursor-pointer">
             <Download className="mr-2 h-4 w-4" />
             Export Report
           </Button>
