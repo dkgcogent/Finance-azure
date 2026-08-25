@@ -11,6 +11,148 @@ const getBlobServiceClient = () => {
   return BlobServiceClient.fromConnectionString(connectionString);
 };
 
+async function ensureGlobalInvoiceManualDataSchema() {
+  try {
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS global_invoice_manual_data (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        invoice_id INT NULL UNIQUE,
+        is_standalone TINYINT(1) DEFAULT 0,
+        standalone_id VARCHAR(100) NULL UNIQUE,
+        gst VARCHAR(50) NULL,
+        gstNo VARCHAR(100) NULL,
+        invNo VARCHAR(100) NULL,
+        poNo VARCHAR(100) NULL,
+        invDate VARCHAR(50) NULL,
+        invMonth VARCHAR(50) NULL,
+        finYear VARCHAR(50) NULL,
+        svcMonth VARCHAR(50) NULL,
+        jmsStatus VARCHAR(50) NULL,
+        jmsNum VARCHAR(100) NULL,
+        jmsDate VARCHAR(50) NULL,
+        subDate VARCHAR(50) NULL,
+        custName VARCHAR(255) NULL,
+        proj VARCHAR(255) NULL,
+        creditDays VARCHAR(50) NULL,
+        projWork VARCHAR(255) NULL,
+        loc VARCHAR(255) NULL,
+        revHead VARCHAR(255) NULL,
+        hsn VARCHAR(100) NULL,
+        invTo VARCHAR(255) NULL,
+        rcm VARCHAR(50) NULL,
+        custGst VARCHAR(100) NULL,
+        invAmt DECIMAL(15,2) NULL,
+        igst DECIMAL(15,2) NULL,
+        sgst DECIMAL(15,2) NULL,
+        cgst DECIMAL(15,2) NULL,
+        totGst DECIMAL(15,2) NULL,
+        totInvAmt DECIMAL(15,2) NULL,
+        tds DECIMAL(15,2) NULL,
+        payable DECIMAL(15,2) NULL,
+        dueDate VARCHAR(50) NULL,
+        pay1Amt DECIMAL(15,2) NULL,
+        pay1Date VARCHAR(50) NULL,
+        pay1Adv VARCHAR(100) NULL,
+        pay2Amt DECIMAL(15,2) NULL,
+        pay2Date VARCHAR(50) NULL,
+        pay2Adv VARCHAR(100) NULL,
+        pay3Amt DECIMAL(15,2) NULL,
+        pay3Date VARCHAR(50) NULL,
+        pay3Adv VARCHAR(100) NULL,
+        gstPayAmt DECIMAL(15,2) NULL,
+        gstPayDate VARCHAR(50) NULL,
+        totPay DECIMAL(15,2) NULL,
+        cnNo VARCHAR(100) NULL,
+        cnAmt DECIMAL(15,2) NULL,
+        cnIgst DECIMAL(15,2) NULL,
+        cnCgst DECIMAL(15,2) NULL,
+        cnSgst DECIMAL(15,2) NULL,
+        cnTotGst DECIMAL(15,2) NULL,
+        cnTotAmt DECIMAL(15,2) NULL,
+        outstanding DECIMAL(15,2) NULL,
+        payStatus VARCHAR(50) NULL,
+        payDays VARCHAR(50) NULL,
+        payDelay VARCHAR(50) NULL,
+        netCredit VARCHAR(50) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Ensure invoice_id is NULLABLE for standalone rows (migrate PRIMARY KEY if invoice_id is PRI)
+    try {
+      const [cols]: any = await db.query("SHOW COLUMNS FROM global_invoice_manual_data WHERE Field = 'invoice_id'");
+      if (cols[0] && cols[0].Key === 'PRI') {
+        await db.query("ALTER TABLE global_invoice_manual_data ADD COLUMN id INT AUTO_INCREMENT FIRST, DROP PRIMARY KEY, ADD PRIMARY KEY (id)");
+      }
+    } catch (e) {
+      // ignore
+    }
+
+    try {
+      await db.query("ALTER TABLE global_invoice_manual_data MODIFY COLUMN invoice_id INT NULL DEFAULT NULL");
+    } catch (e) {
+      // ignore if already nullable
+    }
+
+    const [cols]: any = await db.query("SHOW COLUMNS FROM global_invoice_manual_data");
+    const existing = cols.map((c: any) => c.Field);
+    
+    const newCols = [
+      { name: 'is_standalone', type: 'TINYINT(1) DEFAULT 0' },
+      { name: 'standalone_id', type: 'VARCHAR(100) NULL' },
+      { name: 'gst', type: 'VARCHAR(50) NULL' },
+      { name: 'gstNo', type: 'VARCHAR(100) NULL' },
+      { name: 'invNo', type: 'VARCHAR(100) NULL' },
+      { name: 'poNo', type: 'VARCHAR(100) NULL' },
+      { name: 'invDate', type: 'VARCHAR(50) NULL' },
+      { name: 'invMonth', type: 'VARCHAR(50) NULL' },
+      { name: 'finYear', type: 'VARCHAR(50) NULL' },
+      { name: 'svcMonth', type: 'VARCHAR(50) NULL' },
+      { name: 'creditDays', type: 'VARCHAR(50) NULL' },
+      { name: 'custGst', type: 'VARCHAR(100) NULL' },
+      { name: 'invAmt', type: 'DECIMAL(15,2) NULL' },
+      { name: 'igst', type: 'DECIMAL(15,2) NULL' },
+      { name: 'sgst', type: 'DECIMAL(15,2) NULL' },
+      { name: 'cgst', type: 'DECIMAL(15,2) NULL' },
+      { name: 'totGst', type: 'DECIMAL(15,2) NULL' },
+      { name: 'totInvAmt', type: 'DECIMAL(15,2) NULL' },
+      { name: 'tds', type: 'DECIMAL(15,2) NULL' },
+      { name: 'payable', type: 'DECIMAL(15,2) NULL' },
+      { name: 'dueDate', type: 'VARCHAR(50) NULL' },
+      { name: 'cnNo', type: 'VARCHAR(100) NULL' },
+      { name: 'cnAmt', type: 'DECIMAL(15,2) NULL' },
+      { name: 'cnIgst', type: 'DECIMAL(15,2) NULL' },
+      { name: 'cnCgst', type: 'DECIMAL(15,2) NULL' },
+      { name: 'cnSgst', type: 'DECIMAL(15,2) NULL' },
+      { name: 'cnTotGst', type: 'DECIMAL(15,2) NULL' },
+      { name: 'cnTotAmt', type: 'DECIMAL(15,2) NULL' },
+      { name: 'outstanding', type: 'DECIMAL(15,2) NULL' },
+      { name: 'payDays', type: 'VARCHAR(50) NULL' },
+      { name: 'payDelay', type: 'VARCHAR(50) NULL' },
+      { name: 'netCredit', type: 'VARCHAR(50) NULL' }
+    ];
+
+    for (const col of newCols) {
+      if (!existing.includes(col.name)) {
+        await db.query(`ALTER TABLE global_invoice_manual_data ADD COLUMN ${col.name} ${col.type}`);
+      }
+    }
+
+    // Ensure UNIQUE index on standalone_id
+    try {
+      const [indexes]: any = await db.query("SHOW INDEX FROM global_invoice_manual_data WHERE Key_name = 'idx_standalone_id'");
+      if (!indexes || indexes.length === 0) {
+        await db.query("ALTER TABLE global_invoice_manual_data ADD UNIQUE INDEX idx_standalone_id (standalone_id)");
+      }
+    } catch (e) {
+      // ignore
+    }
+  } catch (e) {
+    console.error("Error ensuring global_invoice_manual_data schema:", e);
+  }
+}
+
 export const invoiceService = {
   getInvoices: async () => {
     const [rows] = await db.query(`
@@ -646,6 +788,8 @@ export const invoiceService = {
       console.error("Error ensuring customer_invoices columns in getGlobalInvoiceMaster:", e);
     }
 
+    await ensureGlobalInvoiceManualDataSchema();
+
     // We fetch customer invoices and join with TMS billing and customer CNDN notes
     // We also fetch payment collections for these billings.
     const query = `
@@ -704,7 +848,7 @@ export const invoiceService = {
 
     const [rows]: any = await db.query(query);
 
-    // Fetch payments for the associated billings
+    // Fetch payment collections for associated billings
     const billingIds = rows.map((r: any) => r.billingId).filter(Boolean);
     let paymentsMap: Record<number, any[]> = {};
     
@@ -723,7 +867,7 @@ export const invoiceService = {
       });
     }
 
-    return rows.map((row: any) => {
+    const regularRows = rows.map((row: any) => {
       // Subtotal / Taxable Amount (e.g. 9002)
       const invAmt = Number((row.ci_subtotal !== null && row.ci_subtotal !== undefined ? Number(row.ci_subtotal) : (Number(row.invAmt) || 0)).toFixed(2));
       
@@ -832,7 +976,7 @@ export const invoiceService = {
         pay2Adv: row.m_pay2Adv || billPayments[1]?.PaymentReference || "",
         
         pay3Amt: row.m_pay3Amt !== null && row.m_pay3Amt !== undefined ? row.m_pay3Amt : (billPayments[2]?.PaymentAmount || 0),
-        pay3Date: row.m_pay3Date || billPayments[2]?.PaymentDate || "",
+        pay3Date: row.m_pay3Date || billPayments[3]?.PaymentDate || "",
         pay3Adv: row.m_pay3Adv || billPayments[2]?.PaymentReference || "",
         
         gstPayAmt: row.m_gstPayAmt || 0,
@@ -855,9 +999,118 @@ export const invoiceService = {
         netCredit: "30"
       };
     });
+
+    // Also fetch standalone manual rows
+    let standaloneRows: any[] = [];
+    try {
+      const [sRows]: any = await db.query(`
+        SELECT * FROM global_invoice_manual_data 
+        WHERE is_standalone = 1 OR invoice_id IS NULL 
+        ORDER BY id DESC
+      `);
+      
+      standaloneRows = sRows.map((r: any) => {
+        const parseNum = (val: any) => {
+          if (val === null || val === undefined || val === '') return 0;
+          const num = Number(String(val).replace(/,/g, ''));
+          return isNaN(num) ? 0 : num;
+        };
+
+        const invAmt = parseNum(r.invAmt);
+        const igst = parseNum(r.igst);
+        const sgst = parseNum(r.sgst);
+        const cgst = parseNum(r.cgst);
+        const totGst = r.totGst !== null && r.totGst !== undefined ? parseNum(r.totGst) : (igst + sgst + cgst);
+        const totInvAmt = r.totInvAmt !== null && r.totInvAmt !== undefined ? parseNum(r.totInvAmt) : (invAmt + totGst);
+        const tds = r.tds !== null && r.tds !== undefined ? parseNum(r.tds) : Number((invAmt * 0.02).toFixed(2));
+        const payable = r.payable !== null && r.payable !== undefined ? parseNum(r.payable) : (totInvAmt - tds);
+
+        const p1 = parseNum(r.pay1Amt);
+        const p2 = parseNum(r.pay2Amt);
+        const p3 = parseNum(r.pay3Amt);
+        const gstP = parseNum(r.gstPayAmt);
+        const totPay = r.totPay !== null && r.totPay !== undefined ? parseNum(r.totPay) : (p1 + p2 + p3 + gstP);
+
+        const cnAmt = parseNum(r.cnAmt);
+        const cnIgst = parseNum(r.cnIgst);
+        const cnCgst = parseNum(r.cnCgst);
+        const cnSgst = parseNum(r.cnSgst);
+        const cnTotGst = r.cnTotGst !== null && r.cnTotGst !== undefined ? parseNum(r.cnTotGst) : (cnIgst + cnCgst + cnSgst);
+        const cnTotAmt = r.cnTotAmt !== null && r.cnTotAmt !== undefined ? parseNum(r.cnTotAmt) : (cnAmt + cnTotGst);
+
+        const outstanding = r.outstanding !== null && r.outstanding !== undefined ? parseNum(r.outstanding) : (payable - totPay - cnTotAmt);
+
+        return {
+          id: r.standalone_id || `manual_${r.id}`,
+          isStandalone: true,
+          type: "Customer",
+          gst: r.gst || "DL",
+          gstNo: r.gstNo || "07AAFCC4715N1ZG",
+          invNo: r.invNo || "",
+          poNo: r.poNo || "",
+          invDate: r.invDate || "",
+          invMonth: r.invMonth || "",
+          finYear: r.finYear || "",
+          svcMonth: r.svcMonth || "",
+          jmsStatus: r.jmsStatus || "Pending",
+          jmsNum: r.jmsNum || "",
+          jmsDate: r.jmsDate || "",
+          subDate: r.subDate || "",
+          custName: r.custName || "",
+          proj: r.proj || "",
+          creditDays: r.creditDays || "30",
+          projWork: r.projWork || "",
+          loc: r.loc || "",
+          revHead: r.revHead || "Transportation Of Goods by Road",
+          hsn: r.hsn || "996511",
+          invTo: r.invTo || "",
+          rcm: r.rcm || "",
+          custGst: r.custGst || "",
+          invAmt: invAmt,
+          igst: igst,
+          sgst: sgst,
+          cgst: cgst,
+          totGst: totGst,
+          totInvAmt: totInvAmt,
+          tds: tds,
+          payable: payable,
+          dueDate: r.dueDate || "",
+          pay1Amt: r.pay1Amt || 0,
+          pay1Date: r.pay1Date || "",
+          pay1Adv: r.pay1Adv || "",
+          pay2Amt: r.pay2Amt || 0,
+          pay2Date: r.pay2Date || "",
+          pay2Adv: r.pay2Adv || "",
+          pay3Amt: r.pay3Amt || 0,
+          pay3Date: r.pay3Date || "",
+          pay3Adv: r.pay3Adv || "",
+          gstPayAmt: r.gstPayAmt || 0,
+          gstPayDate: r.gstPayDate || "",
+          totPay: totPay,
+          cnNo: r.cnNo || "",
+          cnAmt: cnAmt,
+          cnIgst: cnIgst,
+          cnCgst: cnCgst,
+          cnSgst: cnSgst,
+          cnTotGst: cnTotGst,
+          cnTotAmt: cnTotAmt,
+          outstanding: outstanding,
+          payStatus: r.payStatus || (outstanding <= 0 ? "Fully Paid" : totPay > 0 ? "Partially Paid" : "Pending"),
+          payDays: r.payDays || "",
+          payDelay: r.payDelay || "",
+          netCredit: r.netCredit || "30"
+        };
+      });
+    } catch (err) {
+      console.error("Error fetching standalone manual rows:", err);
+    }
+
+    return [...standaloneRows, ...regularRows];
   },
 
   saveGlobalInvoiceMaster: async (rows: any[]) => {
+    await ensureGlobalInvoiceManualDataSchema();
+
     // Bulk upsert into global_invoice_manual_data
     const connection = await db.getConnection();
     try {
@@ -872,46 +1125,111 @@ export const invoiceService = {
       for (const row of rows) {
         if (!row.id) continue;
 
+        const isStandalone = row.isStandalone || String(row.id).startsWith('manual_');
+
         const p1 = parseNum(row.pay1Amt);
         const p2 = parseNum(row.pay2Amt);
         const p3 = parseNum(row.pay3Amt);
         const gstP = parseNum(row.gstPayAmt);
         const calculatedTotPay = Number((p1 + p2 + p3 + gstP).toFixed(2));
         
-        const q = `
-          INSERT INTO global_invoice_manual_data (
-            invoice_id, jmsStatus, jmsNum, jmsDate, subDate, custName, proj, projWork, loc,
-            revHead, hsn, invTo, rcm, pay1Amt, pay1Date, pay1Adv, pay2Amt, pay2Date, pay2Adv,
-            pay3Amt, pay3Date, pay3Adv, gstPayAmt, gstPayDate, totPay, payStatus
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          ON DUPLICATE KEY UPDATE 
-            jmsStatus=VALUES(jmsStatus), jmsNum=VALUES(jmsNum), jmsDate=VALUES(jmsDate), subDate=VALUES(subDate),
-            custName=VALUES(custName), proj=VALUES(proj), projWork=VALUES(projWork), loc=VALUES(loc),
-            revHead=VALUES(revHead), hsn=VALUES(hsn), invTo=VALUES(invTo), rcm=VALUES(rcm),
-            pay1Amt=VALUES(pay1Amt), pay1Date=VALUES(pay1Date), pay1Adv=VALUES(pay1Adv),
-            pay2Amt=VALUES(pay2Amt), pay2Date=VALUES(pay2Date), pay2Adv=VALUES(pay2Adv),
-            pay3Amt=VALUES(pay3Amt), pay3Date=VALUES(pay3Date), pay3Adv=VALUES(pay3Adv),
-            gstPayAmt=VALUES(gstPayAmt), gstPayDate=VALUES(gstPayDate), totPay=VALUES(totPay), payStatus=VALUES(payStatus)
-        `;
-        
-        const values = [
-          row.id,
-          row.jmsStatus || null, row.jmsNum || null, row.jmsDate || null, row.subDate || null,
-          row.custName || null, row.proj || null, row.projWork || null, row.loc || null,
-          row.revHead || null, row.hsn || null, row.invTo || null, row.rcm || null,
-          row.pay1Amt || null, row.pay1Date || null, row.pay1Adv || null,
-          row.pay2Amt || null, row.pay2Date || null, row.pay2Adv || null,
-          row.pay3Amt || null, row.pay3Date || null, row.pay3Adv || null,
-          row.gstPayAmt || null, row.gstPayDate || null, calculatedTotPay, row.payStatus || null
-        ];
-        
-        await connection.query(q, values);
+        if (isStandalone) {
+          const invAmt = parseNum(row.invAmt);
+          const igst = parseNum(row.igst);
+          const sgst = parseNum(row.sgst);
+          const cgst = parseNum(row.cgst);
+          const totGst = parseNum(row.totGst) || (igst + sgst + cgst);
+          const totInvAmt = parseNum(row.totInvAmt) || (invAmt + totGst);
+          const tds = parseNum(row.tds) || Number((invAmt * 0.02).toFixed(2));
+          const payable = parseNum(row.payable) || (totInvAmt - tds);
+
+          const cnAmt = parseNum(row.cnAmt);
+          const cnIgst = parseNum(row.cnIgst);
+          const cnCgst = parseNum(row.cnCgst);
+          const cnSgst = parseNum(row.cnSgst);
+          const cnTotGst = parseNum(row.cnTotGst) || (cnIgst + cnCgst + cnSgst);
+          const cnTotAmt = parseNum(row.cnTotAmt) || (cnAmt + cnTotGst);
+
+          const outstanding = parseNum(row.outstanding) || (payable - calculatedTotPay - cnTotAmt);
+
+          const q = `
+            INSERT INTO global_invoice_manual_data (
+              invoice_id, is_standalone, standalone_id, gst, gstNo, invNo, poNo, invDate, invMonth, finYear, svcMonth,
+              jmsStatus, jmsNum, jmsDate, subDate, custName, proj, creditDays, projWork, loc, revHead, hsn, invTo, rcm, custGst,
+              invAmt, igst, sgst, cgst, totGst, totInvAmt, tds, payable, dueDate,
+              pay1Amt, pay1Date, pay1Adv, pay2Amt, pay2Date, pay2Adv, pay3Amt, pay3Date, pay3Adv,
+              gstPayAmt, gstPayDate, totPay, cnNo, cnAmt, cnIgst, cnCgst, cnSgst, cnTotGst, cnTotAmt,
+              outstanding, payStatus, payDays, payDelay, netCredit
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE 
+              gst=VALUES(gst), gstNo=VALUES(gstNo), invNo=VALUES(invNo), poNo=VALUES(poNo), invDate=VALUES(invDate),
+              invMonth=VALUES(invMonth), finYear=VALUES(finYear), svcMonth=VALUES(svcMonth),
+              jmsStatus=VALUES(jmsStatus), jmsNum=VALUES(jmsNum), jmsDate=VALUES(jmsDate), subDate=VALUES(subDate),
+              custName=VALUES(custName), proj=VALUES(proj), creditDays=VALUES(creditDays), projWork=VALUES(projWork), loc=VALUES(loc),
+              revHead=VALUES(revHead), hsn=VALUES(hsn), invTo=VALUES(invTo), rcm=VALUES(rcm), custGst=VALUES(custGst),
+              invAmt=VALUES(invAmt), igst=VALUES(igst), sgst=VALUES(sgst), cgst=VALUES(cgst), totGst=VALUES(totGst),
+              totInvAmt=VALUES(totInvAmt), tds=VALUES(tds), payable=VALUES(payable), dueDate=VALUES(dueDate),
+              pay1Amt=VALUES(pay1Amt), pay1Date=VALUES(pay1Date), pay1Adv=VALUES(pay1Adv),
+              pay2Amt=VALUES(pay2Amt), pay2Date=VALUES(pay2Date), pay2Adv=VALUES(pay2Adv),
+              pay3Amt=VALUES(pay3Amt), pay3Date=VALUES(pay3Date), pay3Adv=VALUES(pay3Adv),
+              gstPayAmt=VALUES(gstPayAmt), gstPayDate=VALUES(gstPayDate), totPay=VALUES(totPay),
+              cnNo=VALUES(cnNo), cnAmt=VALUES(cnAmt), cnIgst=VALUES(cnIgst), cnCgst=VALUES(cnCgst), cnSgst=VALUES(cnSgst),
+              cnTotGst=VALUES(cnTotGst), cnTotAmt=VALUES(cnTotAmt), outstanding=VALUES(outstanding),
+              payStatus=VALUES(payStatus), payDays=VALUES(payDays), payDelay=VALUES(payDelay), netCredit=VALUES(netCredit)
+          `;
+
+          const values = [
+            null, 1, String(row.id), row.gst || 'DL', row.gstNo || '', row.invNo || '', row.poNo || '', row.invDate || '', row.invMonth || '', row.finYear || '', row.svcMonth || '',
+            row.jmsStatus || null, row.jmsNum || null, row.jmsDate || null, row.subDate || null,
+            row.custName || null, row.proj || null, row.creditDays || '30', row.projWork || null, row.loc || null,
+            row.revHead || null, row.hsn || null, row.invTo || null, row.rcm || null, row.custGst || null,
+            invAmt, igst, sgst, cgst, totGst, totInvAmt, tds, payable, row.dueDate || null,
+            row.pay1Amt || null, row.pay1Date || null, row.pay1Adv || null,
+            row.pay2Amt || null, row.pay2Date || null, row.pay2Adv || null,
+            row.pay3Amt || null, row.pay3Date || null, row.pay3Adv || null,
+            row.gstPayAmt || null, row.gstPayDate || null, calculatedTotPay,
+            row.cnNo || null, cnAmt, cnIgst, cnCgst, cnSgst, cnTotGst, cnTotAmt,
+            outstanding, row.payStatus || null, row.payDays || null, row.payDelay || null, row.netCredit || '30'
+          ];
+
+          await connection.query(q, values);
+        } else {
+          const q = `
+            INSERT INTO global_invoice_manual_data (
+              invoice_id, jmsStatus, jmsNum, jmsDate, subDate, custName, proj, projWork, loc,
+              revHead, hsn, invTo, rcm, pay1Amt, pay1Date, pay1Adv, pay2Amt, pay2Date, pay2Adv,
+              pay3Amt, pay3Date, pay3Adv, gstPayAmt, gstPayDate, totPay, payStatus
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE 
+              jmsStatus=VALUES(jmsStatus), jmsNum=VALUES(jmsNum), jmsDate=VALUES(jmsDate), subDate=VALUES(subDate),
+              custName=VALUES(custName), proj=VALUES(proj), projWork=VALUES(projWork), loc=VALUES(loc),
+              revHead=VALUES(revHead), hsn=VALUES(hsn), invTo=VALUES(invTo), rcm=VALUES(rcm),
+              pay1Amt=VALUES(pay1Amt), pay1Date=VALUES(pay1Date), pay1Adv=VALUES(pay1Adv),
+              pay2Amt=VALUES(pay2Amt), pay2Date=VALUES(pay2Date), pay2Adv=VALUES(pay2Adv),
+              pay3Amt=VALUES(pay3Amt), pay3Date=VALUES(pay3Date), pay3Adv=VALUES(pay3Adv),
+              gstPayAmt=VALUES(gstPayAmt), gstPayDate=VALUES(gstPayDate), totPay=VALUES(totPay), payStatus=VALUES(payStatus)
+          `;
+          
+          const values = [
+            row.id,
+            row.jmsStatus || null, row.jmsNum || null, row.jmsDate || null, row.subDate || null,
+            row.custName || null, row.proj || null, row.projWork || null, row.loc || null,
+            row.revHead || null, row.hsn || null, row.invTo || null, row.rcm || null,
+            row.pay1Amt || null, row.pay1Date || null, row.pay1Adv || null,
+            row.pay2Amt || null, row.pay2Date || null, row.pay2Adv || null,
+            row.pay3Amt || null, row.pay3Date || null, row.pay3Adv || null,
+            row.gstPayAmt || null, row.gstPayDate || null, calculatedTotPay, row.payStatus || null
+          ];
+          
+          await connection.query(q, values);
+        }
       }
       
       await connection.commit();
       return { success: true };
     } catch (err) {
       await connection.rollback();
+      console.error("Error in saveGlobalInvoiceMaster:", err);
       throw err;
     } finally {
       connection.release();
