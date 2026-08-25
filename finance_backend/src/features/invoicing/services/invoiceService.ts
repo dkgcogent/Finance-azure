@@ -764,10 +764,21 @@ export const invoiceService = {
       
       // Payments
       const billPayments = paymentsMap[row.billingId] || [];
-      const totPay = Number(billPayments.reduce((sum, p) => sum + Number(p.PaymentAmount), 0).toFixed(2));
-      
-      // Outstanding
-      const outstanding = Number((payable - totPay - cnTotAmt).toFixed(2));
+
+      // Helper to parse numeric values safely
+      const parseNum = (val: any) => {
+        if (val === null || val === undefined || val === '') return 0;
+        const num = Number(String(val).replace(/,/g, ''));
+        return isNaN(num) ? 0 : num;
+      };
+
+      const p1 = row.m_pay1Amt !== null && row.m_pay1Amt !== undefined ? parseNum(row.m_pay1Amt) : parseNum(billPayments[0]?.PaymentAmount);
+      const p2 = row.m_pay2Amt !== null && row.m_pay2Amt !== undefined ? parseNum(row.m_pay2Amt) : parseNum(billPayments[1]?.PaymentAmount);
+      const p3 = row.m_pay3Amt !== null && row.m_pay3Amt !== undefined ? parseNum(row.m_pay3Amt) : parseNum(billPayments[2]?.PaymentAmount);
+      const gstP = parseNum(row.m_gstPayAmt);
+
+      const calculatedTotPay = Number((p1 + p2 + p3 + gstP).toFixed(2));
+      const calculatedOutstanding = Number((payable - calculatedTotPay - cnTotAmt).toFixed(2));
 
       // Extract Month/Year from invoice date
       const dateObj = row.invDate ? new Date(row.invDate) : new Date();
@@ -812,21 +823,21 @@ export const invoiceService = {
         dueDate: row.dueDate ? new Date(row.dueDate).toISOString().split('T')[0] : "",
         
         // Payments
-        pay1Amt: row.m_pay1Amt || billPayments[0]?.PaymentAmount || 0,
+        pay1Amt: row.m_pay1Amt !== null && row.m_pay1Amt !== undefined ? row.m_pay1Amt : (billPayments[0]?.PaymentAmount || 0),
         pay1Date: row.m_pay1Date || billPayments[0]?.PaymentDate || "",
         pay1Adv: row.m_pay1Adv || billPayments[0]?.PaymentReference || "",
         
-        pay2Amt: row.m_pay2Amt || billPayments[1]?.PaymentAmount || 0,
+        pay2Amt: row.m_pay2Amt !== null && row.m_pay2Amt !== undefined ? row.m_pay2Amt : (billPayments[1]?.PaymentAmount || 0),
         pay2Date: row.m_pay2Date || billPayments[1]?.PaymentDate || "",
         pay2Adv: row.m_pay2Adv || billPayments[1]?.PaymentReference || "",
         
-        pay3Amt: row.m_pay3Amt || billPayments[2]?.PaymentAmount || 0,
+        pay3Amt: row.m_pay3Amt !== null && row.m_pay3Amt !== undefined ? row.m_pay3Amt : (billPayments[2]?.PaymentAmount || 0),
         pay3Date: row.m_pay3Date || billPayments[2]?.PaymentDate || "",
         pay3Adv: row.m_pay3Adv || billPayments[2]?.PaymentReference || "",
         
         gstPayAmt: row.m_gstPayAmt || 0,
         gstPayDate: row.m_gstPayDate || "",
-        totPay: row.m_totPay || totPay,
+        totPay: calculatedTotPay,
         
         // CN/DN
         cnNo: cnNo,
@@ -837,8 +848,8 @@ export const invoiceService = {
         cnTotGst: cnTotGst,
         cnTotAmt: cnTotAmt,
         
-        outstanding: outstanding,
-        payStatus: row.m_payStatus || (outstanding <= 0 ? "Fully Paid" : totPay > 0 ? "Partially Paid" : "Pending"),
+        outstanding: calculatedOutstanding,
+        payStatus: row.m_payStatus || (calculatedOutstanding <= 0 ? "Fully Paid" : calculatedTotPay > 0 ? "Partially Paid" : "Pending"),
         payDays: "",
         payDelay: "",
         netCredit: "30"
@@ -851,9 +862,21 @@ export const invoiceService = {
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
+
+      const parseNum = (v: any) => {
+        if (v === null || v === undefined || v === '') return 0;
+        const n = Number(String(v).replace(/,/g, ''));
+        return isNaN(n) ? 0 : n;
+      };
       
       for (const row of rows) {
         if (!row.id) continue;
+
+        const p1 = parseNum(row.pay1Amt);
+        const p2 = parseNum(row.pay2Amt);
+        const p3 = parseNum(row.pay3Amt);
+        const gstP = parseNum(row.gstPayAmt);
+        const calculatedTotPay = Number((p1 + p2 + p3 + gstP).toFixed(2));
         
         const q = `
           INSERT INTO global_invoice_manual_data (
@@ -879,7 +902,7 @@ export const invoiceService = {
           row.pay1Amt || null, row.pay1Date || null, row.pay1Adv || null,
           row.pay2Amt || null, row.pay2Date || null, row.pay2Adv || null,
           row.pay3Amt || null, row.pay3Date || null, row.pay3Adv || null,
-          row.gstPayAmt || null, row.gstPayDate || null, row.totPay || null, row.payStatus || null
+          row.gstPayAmt || null, row.gstPayDate || null, calculatedTotPay, row.payStatus || null
         ];
         
         await connection.query(q, values);

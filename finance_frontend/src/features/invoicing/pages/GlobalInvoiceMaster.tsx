@@ -305,7 +305,7 @@ export default function GlobalInvoiceMaster() {
                            else if (index === 1) leftOffset = `${left1}px`;
                            else if (index === 2) leftOffset = `${left2}px`;
 
-                           const isEditable = col.bg !== 'bg-[#e6b8b7]';
+                           const isEditable = col.bg !== 'bg-[#e6b8b7]' && col.key !== 'totPay' && col.key !== 'outstanding';
 
                            const rawVal = row[col.key];
                            const isNumericCol = [
@@ -336,8 +336,38 @@ export default function GlobalInvoiceMaster() {
                               suppressContentEditableWarning={true}
                               onBlur={(e) => {
                                 if (!isEditable) return;
+                                const textVal = e.currentTarget.textContent || '';
                                 const newRows = [...masterRows];
-                                newRows[i] = { ...newRows[i], [col.key]: e.currentTarget.textContent };
+                                const updatedRow = { ...newRows[i], [col.key]: textVal };
+
+                                const parseNum = (v: any) => {
+                                  if (v === null || v === undefined || v === '') return 0;
+                                  const n = Number(String(v).replace(/,/g, ''));
+                                  return isNaN(n) ? 0 : n;
+                                };
+
+                                const p1 = parseNum(updatedRow.pay1Amt);
+                                const p2 = parseNum(updatedRow.pay2Amt);
+                                const p3 = parseNum(updatedRow.pay3Amt);
+                                const gstP = parseNum(updatedRow.gstPayAmt);
+
+                                const totalPayment = Number((p1 + p2 + p3 + gstP).toFixed(2));
+                                updatedRow.totPay = totalPayment;
+
+                                const payable = parseNum(updatedRow.payable);
+                                const cnTotAmt = parseNum(updatedRow.cnTotAmt);
+                                const curOutstanding = Number((payable - totalPayment - cnTotAmt).toFixed(2));
+                                updatedRow.outstanding = curOutstanding;
+
+                                if (curOutstanding <= 0 && payable > 0) {
+                                  updatedRow.payStatus = "Fully Paid";
+                                } else if (totalPayment > 0) {
+                                  updatedRow.payStatus = "Partially Paid";
+                                } else {
+                                  updatedRow.payStatus = "Pending";
+                                }
+
+                                newRows[i] = updatedRow;
                                 setMasterRows(newRows);
                               }}
                             >
