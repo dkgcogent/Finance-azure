@@ -13,7 +13,8 @@ import {
   RefreshCw,
   Save,
   Download,
-  Loader2
+  Loader2,
+  Plus
 } from "lucide-react"
 import { apiClient } from "@/lib/api"
 
@@ -139,6 +140,72 @@ export default function GlobalInvoiceMaster() {
     }
   };
 
+  const handleAddRow = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const newRow = {
+      id: `manual_${Date.now()}`,
+      isStandalone: true,
+      type: "Customer",
+      gst: "DL",
+      gstNo: "07AAFCC4715N1ZG",
+      invNo: "",
+      poNo: "",
+      invDate: today,
+      invMonth: "",
+      finYear: "",
+      svcMonth: "",
+      jmsStatus: "Pending",
+      jmsNum: "",
+      jmsDate: "",
+      subDate: today,
+      custName: "",
+      proj: "",
+      creditDays: "30",
+      projWork: "",
+      loc: "",
+      revHead: "Transportation Of Goods by Road",
+      hsn: "996511",
+      invTo: "",
+      rcm: "No",
+      custGst: "",
+      invAmt: 0,
+      igst: 0,
+      sgst: 0,
+      cgst: 0,
+      totGst: 0,
+      totInvAmt: 0,
+      tds: 0,
+      payable: 0,
+      dueDate: "",
+      pay1Amt: 0,
+      pay1Date: "",
+      pay1Adv: "",
+      pay2Amt: 0,
+      pay2Date: "",
+      pay2Adv: "",
+      pay3Amt: 0,
+      pay3Date: "",
+      pay3Adv: "",
+      gstPayAmt: 0,
+      gstPayDate: "",
+      totPay: 0,
+      cnNo: "",
+      cnAmt: 0,
+      cnIgst: 0,
+      cnCgst: 0,
+      cnSgst: 0,
+      cnTotGst: 0,
+      cnTotAmt: 0,
+      outstanding: 0,
+      payStatus: "Pending",
+      payDays: "",
+      payDelay: "",
+      netCredit: "30"
+    };
+
+    setMasterRows(prev => [newRow, ...prev]);
+  };
+
   const handleExport = () => {
     if (!masterRows || masterRows.length === 0) {
       alert("No data to export");
@@ -238,6 +305,10 @@ export default function GlobalInvoiceMaster() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="default" size="sm" className="h-8 bg-blue-600 hover:bg-blue-700 text-white" onClick={handleAddRow}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Row
+          </Button>
           <Button variant="outline" size="sm" className="h-8" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
             Export
@@ -295,88 +366,125 @@ export default function GlobalInvoiceMaster() {
                     </tr>
                   </thead>
                   <tbody>
-                    {masterRows.map((row, i) => (
-                      <tr key={i} className="hover:bg-slate-50 group">
-                        {columnsConfig.map((col, index) => {
-                           const width = getColWidth(col.key, col.initialWidth);
-                           const isSticky = col.isSticky;
-                           let leftOffset = 'auto';
-                           if (index === 0) leftOffset = `${left0}px`;
-                           else if (index === 1) leftOffset = `${left1}px`;
-                           else if (index === 2) leftOffset = `${left2}px`;
+                    {masterRows.map((row, i) => {
+                      const isRowStandalone = row.isStandalone || String(row.id).startsWith('manual_');
 
-                           const isEditable = col.bg !== 'bg-[#e6b8b7]' && col.key !== 'totPay' && col.key !== 'outstanding';
+                      return (
+                        <tr key={row.id || i} className={`hover:bg-slate-50 group ${isRowStandalone ? 'bg-amber-50/30' : ''}`}>
+                          {columnsConfig.map((col, index) => {
+                             const width = getColWidth(col.key, col.initialWidth);
+                             const isSticky = col.isSticky;
+                             let leftOffset = 'auto';
+                             if (index === 0) leftOffset = `${left0}px`;
+                             else if (index === 1) leftOffset = `${left1}px`;
+                             else if (index === 2) leftOffset = `${left2}px`;
 
-                           const rawVal = row[col.key];
-                           const isNumericCol = [
-                             'invAmt', 'igst', 'sgst', 'cgst', 'totGst', 'totInvAmt',
-                             'tds', 'payable', 'pay1Amt', 'pay2Amt', 'pay3Amt', 'gstPayAmt',
-                             'totPay', 'cnAmt', 'cnIgst', 'cnCgst', 'cnSgst', 'cnTotGst', 'cnTotAmt', 'outstanding'
-                           ].includes(col.key);
-                           
-                           let displayVal = rawVal || "";
-                           if (isNumericCol && rawVal !== null && rawVal !== undefined && rawVal !== '') {
-                             const num = Number(String(rawVal).replace(/,/g, ''));
-                             if (!isNaN(num)) {
-                               displayVal = num.toFixed(2);
+                             const isCalculatedCol = ['totPay', 'outstanding'].includes(col.key);
+                             const isEditable = isRowStandalone ? !isCalculatedCol : (col.bg !== 'bg-[#e6b8b7]' && !isCalculatedCol);
+
+                             const rawVal = row[col.key];
+                             const isNumericCol = [
+                               'invAmt', 'igst', 'sgst', 'cgst', 'totGst', 'totInvAmt',
+                               'tds', 'payable', 'pay1Amt', 'pay2Amt', 'pay3Amt', 'gstPayAmt',
+                               'totPay', 'cnAmt', 'cnIgst', 'cnCgst', 'cnSgst', 'cnTotGst', 'cnTotAmt', 'outstanding'
+                             ].includes(col.key);
+                             
+                             let displayVal = rawVal || "";
+                             if (isNumericCol && rawVal !== null && rawVal !== undefined && rawVal !== '') {
+                               const num = Number(String(rawVal).replace(/,/g, ''));
+                               if (!isNaN(num)) {
+                                 displayVal = num.toFixed(2);
+                               }
                              }
-                           }
 
-                           return (
-                            <td 
-                              key={col.key} 
-                              className={`p-2 border border-slate-300 outline-none truncate ${col.cellClasses || ''} ${isSticky ? 'sticky z-10 bg-white group-hover:bg-slate-50' : ''} ${isEditable ? 'focus:bg-blue-50 focus:ring-1 focus:ring-blue-400 cursor-text' : 'cursor-default bg-slate-50/50'}`}
-                              style={{
-                                width: `${width}px`, 
-                                minWidth: `${width}px`, 
-                                maxWidth: `${width}px`,
-                                left: leftOffset !== 'auto' ? leftOffset : undefined 
-                              }}
-                              contentEditable={isEditable}
-                              suppressContentEditableWarning={true}
-                              onBlur={(e) => {
-                                if (!isEditable) return;
-                                const textVal = e.currentTarget.textContent || '';
-                                const newRows = [...masterRows];
-                                const updatedRow = { ...newRows[i], [col.key]: textVal };
+                             return (
+                              <td 
+                                key={col.key} 
+                                className={`p-2 border border-slate-300 outline-none truncate ${col.cellClasses || ''} ${isSticky ? 'sticky z-10 bg-white group-hover:bg-slate-50' : ''} ${isEditable ? 'focus:bg-blue-50 focus:ring-1 focus:ring-blue-400 cursor-text' : 'cursor-default bg-slate-50/50'}`}
+                                style={{
+                                  width: `${width}px`, 
+                                  minWidth: `${width}px`, 
+                                  maxWidth: `${width}px`,
+                                  left: leftOffset !== 'auto' ? leftOffset : undefined 
+                                }}
+                                contentEditable={isEditable}
+                                suppressContentEditableWarning={true}
+                                onBlur={(e) => {
+                                  if (!isEditable) return;
+                                  const textVal = e.currentTarget.textContent || '';
+                                  const newRows = [...masterRows];
+                                  const updatedRow = { ...newRows[i], [col.key]: textVal };
 
-                                const parseNum = (v: any) => {
-                                  if (v === null || v === undefined || v === '') return 0;
-                                  const n = Number(String(v).replace(/,/g, ''));
-                                  return isNaN(n) ? 0 : n;
-                                };
+                                  const parseNum = (v: any) => {
+                                    if (v === null || v === undefined || v === '') return 0;
+                                    const n = Number(String(v).replace(/,/g, ''));
+                                    return isNaN(n) ? 0 : n;
+                                  };
 
-                                const p1 = parseNum(updatedRow.pay1Amt);
-                                const p2 = parseNum(updatedRow.pay2Amt);
-                                const p3 = parseNum(updatedRow.pay3Amt);
-                                const gstP = parseNum(updatedRow.gstPayAmt);
+                                  if (isRowStandalone) {
+                                    const invAmt = parseNum(updatedRow.invAmt);
+                                    const igst = parseNum(updatedRow.igst);
+                                    const sgst = parseNum(updatedRow.sgst);
+                                    const cgst = parseNum(updatedRow.cgst);
 
-                                const totalPayment = Number((p1 + p2 + p3 + gstP).toFixed(2));
-                                updatedRow.totPay = totalPayment;
+                                    const totGst = Number((igst + sgst + cgst).toFixed(2));
+                                    updatedRow.totGst = totGst;
 
-                                const payable = parseNum(updatedRow.payable);
-                                const cnTotAmt = parseNum(updatedRow.cnTotAmt);
-                                const curOutstanding = Number((payable - totalPayment - cnTotAmt).toFixed(2));
-                                updatedRow.outstanding = curOutstanding;
+                                    const totInvAmt = Number((invAmt + totGst).toFixed(2));
+                                    updatedRow.totInvAmt = totInvAmt;
 
-                                if (curOutstanding <= 0 && payable > 0) {
-                                  updatedRow.payStatus = "Fully Paid";
-                                } else if (totalPayment > 0) {
-                                  updatedRow.payStatus = "Partially Paid";
-                                } else {
-                                  updatedRow.payStatus = "Pending";
-                                }
+                                    if (col.key === 'invAmt' || !updatedRow.tds) {
+                                      updatedRow.tds = Number((invAmt * 0.02).toFixed(2));
+                                    }
 
-                                newRows[i] = updatedRow;
-                                setMasterRows(newRows);
-                              }}
-                            >
-                              {displayVal}
-                            </td>
-                           )
-                        })}
-                      </tr>
-                    ))}
+                                    const tds = parseNum(updatedRow.tds);
+                                    const payable = Number((totInvAmt - tds).toFixed(2));
+                                    updatedRow.payable = payable;
+
+                                    const cnAmt = parseNum(updatedRow.cnAmt);
+                                    const cnIgst = parseNum(updatedRow.cnIgst);
+                                    const cnCgst = parseNum(updatedRow.cnCgst);
+                                    const cnSgst = parseNum(updatedRow.cnSgst);
+
+                                    const cnTotGst = Number((cnIgst + cnCgst + cnSgst).toFixed(2));
+                                    updatedRow.cnTotGst = cnTotGst;
+
+                                    const cnTotAmt = Number((cnAmt + cnTotGst).toFixed(2));
+                                    updatedRow.cnTotAmt = cnTotAmt;
+                                  }
+
+                                  const p1 = parseNum(updatedRow.pay1Amt);
+                                  const p2 = parseNum(updatedRow.pay2Amt);
+                                  const p3 = parseNum(updatedRow.pay3Amt);
+                                  const gstP = parseNum(updatedRow.gstPayAmt);
+
+                                  const totalPayment = Number((p1 + p2 + p3 + gstP).toFixed(2));
+                                  updatedRow.totPay = totalPayment;
+
+                                  const payable = parseNum(updatedRow.payable);
+                                  const cnTotAmt = parseNum(updatedRow.cnTotAmt);
+                                  const curOutstanding = Number((payable - totalPayment - cnTotAmt).toFixed(2));
+                                  updatedRow.outstanding = curOutstanding;
+
+                                  if (curOutstanding <= 0 && payable > 0) {
+                                    updatedRow.payStatus = "Fully Paid";
+                                  } else if (totalPayment > 0) {
+                                    updatedRow.payStatus = "Partially Paid";
+                                  } else {
+                                    updatedRow.payStatus = "Pending";
+                                  }
+
+                                  newRows[i] = updatedRow;
+                                  setMasterRows(newRows);
+                                }}
+                              >
+                                {displayVal}
+                              </td>
+                             )
+                          })}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
