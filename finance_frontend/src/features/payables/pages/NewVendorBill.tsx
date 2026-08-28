@@ -3,7 +3,8 @@ import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ArrowLeft, Download, Loader2 } from "lucide-react"
+import { ArrowLeft, Download, Loader2, AlertCircle } from "lucide-react"
+import { Modal } from "@/components/ui/modal"
 import html2canvas from 'html2canvas'
 import { jsPDF } from 'jspdf'
 import { useCustomerInvoices } from "@/features/invoicing/hooks/useCustomerInvoices"
@@ -56,6 +57,7 @@ import { numberToWords } from "@/lib/utils"
 export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
   const [step, setStep] = useState<"details" | "cards" | "mis" | "annexure" | "preview">("details")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [noDataModalOpen, setNoDataModalOpen] = useState(false)
   const [customerId, setCustomerId] = useState("")
   const [projectId, setProjectId] = useState("")
   const [locationId, setLocationId] = useState("")
@@ -351,6 +353,12 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
 
   const handleNext = async () => {
     if (step === "details") {
+      const misCount = vendorTrips?.misData?.length ?? 0;
+      const annexCount = vendorTrips?.annexureData?.length ?? 0;
+      if (misCount === 0 && annexCount === 0) {
+        setNoDataModalOpen(true);
+        return;
+      }
       setStep("cards");
     } else if (step === "cards") {
       setStep("mis");
@@ -1150,6 +1158,49 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
           )}
         </CardContent>
       </Card>
+
+      {/* Validation Modal: No Data Found */}
+      <Modal
+        isOpen={noDataModalOpen}
+        onClose={() => setNoDataModalOpen(false)}
+        size="md"
+      >
+        <div className="flex flex-col items-center text-center p-2">
+          <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center mb-4">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+            No Records Found
+          </h3>
+          <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
+            There are no trip logs or billing records available for the selected parameters. Please check your selections and try again.
+          </p>
+          <div className="w-full bg-muted/40 rounded-xl p-3.5 text-xs text-left space-y-2 border mb-6 text-muted-foreground">
+            <div className="flex justify-between">
+              <span className="font-semibold text-foreground">Vendor:</span>
+              <span>{selectedVendor?.name || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-semibold text-foreground">Customer:</span>
+              <span>{selectedCustomer?.name || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-semibold text-foreground">Project:</span>
+              <span>{selectedProject?.name || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-semibold text-foreground">Type & Period:</span>
+              <span>{vehicleType || '—'} ({startDate || '—'} to {endDate || '—'})</span>
+            </div>
+          </div>
+          <Button
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-xl text-sm"
+            onClick={() => setNoDataModalOpen(false)}
+          >
+            Understood
+          </Button>
+        </div>
+      </Modal>
     </div>
   )
 }

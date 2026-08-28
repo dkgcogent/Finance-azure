@@ -20,8 +20,10 @@ import {
   Send,
   Ban,
   ArrowLeft,
-  Loader2
+  Loader2,
+  AlertCircle
 } from "lucide-react"
+import { Modal } from "@/components/ui/modal"
 import { useGlobalStore } from "@/store/useGlobalStore"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useCustomerInvoices, useCreateCustomerInvoice } from "../hooks/useCustomerInvoices"
@@ -49,6 +51,7 @@ export default function CustomerInvoice() {
   const [serviceProviderCode, setServiceProviderCode] = useState("")
   const [costCode, setCostCode] = useState("")
   const [previewInvoiceNumber, setPreviewInvoiceNumber] = useState("")
+  const [noDataModalOpen, setNoDataModalOpen] = useState(false)
 
   const { customers, projects, locations, isLoading: isMasterLoading } = useMasterData()
   
@@ -1258,6 +1261,14 @@ export default function CustomerInvoice() {
                         endDate
                       }, {
                         onSuccess: (data) => {
+                          const misCount = data?.misData?.length ?? 0;
+                          const annexCount = (data?.flipkartAnnexureData ?? data?.flipkartAdhocAnnexureData ?? data?.annexureData ?? []).length;
+                          
+                          if (misCount === 0 && annexCount === 0) {
+                            setNoDataModalOpen(true);
+                            return;
+                          }
+
                           setReportData(data);
                           // Generate invoice number NOW (at Proceed time) so it shows in preview
                           const fy = financialYear || '2025-2026';
@@ -1343,12 +1354,53 @@ export default function CustomerInvoice() {
                   </div>
                 )}
               </div>
-
-              {/* Quick Actions below the invoice removed per user request */}
             </div>
           </div>
         </div>
       )}
+
+      {/* Validation Modal: No Data Found */}
+      <Modal
+        isOpen={noDataModalOpen}
+        onClose={() => setNoDataModalOpen(false)}
+        size="md"
+      >
+        <div className="flex flex-col items-center text-center p-2">
+          <div className="w-14 h-14 rounded-full bg-amber-100 dark:bg-amber-950/40 text-amber-600 flex items-center justify-center mb-4">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+            No Records Found
+          </h3>
+          <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
+            There are no trip logs or billing records available for the selected parameters. Please check your selections and try again.
+          </p>
+          <div className="w-full bg-muted/40 rounded-xl p-3.5 text-xs text-left space-y-2 border mb-6 text-muted-foreground">
+            <div className="flex justify-between">
+              <span className="font-semibold text-foreground">Customer:</span>
+              <span>{selectedCustomer?.name || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-semibold text-foreground">Project:</span>
+              <span>{selectedProject?.name || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-semibold text-foreground">State:</span>
+              <span>{invoiceLocation || '—'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="font-semibold text-foreground">Type & Period:</span>
+              <span>{invoiceType || '—'} ({startDate || '—'} to {endDate || '—'})</span>
+            </div>
+          </div>
+          <Button
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-xl text-sm"
+            onClick={() => setNoDataModalOpen(false)}
+          >
+            Understood
+          </Button>
+        </div>
+      </Modal>
     </div>
   )
 }
