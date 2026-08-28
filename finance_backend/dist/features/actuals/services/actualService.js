@@ -26,6 +26,10 @@ const fetchRevenueDirectExpenses = async (year) => {
         groupedData[groupKey].directExpensePctMonths[row.month] = parseFloat(row.direct_expense_pct) || 0;
     });
     // Load live revenue from customer_invoices (overrides or adds to manual if present)
+    const startYearStr = year ? String(year).split('-')[0] : '2026';
+    const startYrNum = parseInt(startYearStr, 10) || 2026;
+    const startDateStr = `${startYrNum}-04-01`;
+    const endDateStr = `${startYrNum + 1}-03-31`;
     const liveQuery = `
     SELECT 
       ci.customer_name as customer,
@@ -34,10 +38,24 @@ const fetchRevenueDirectExpenses = async (year) => {
       MONTH(ci.date) as invoice_month,
       SUM(ci.amount) as revenue
     FROM customer_invoices ci
-    WHERE ci.financial_year = ?
+    WHERE (ci.financial_year = ? OR ci.financial_year = ? OR (ci.date >= ? AND ci.date <= ?))
     GROUP BY ci.customer_name, ci.project, ci.location, MONTH(ci.date)
+
+    UNION ALL
+
+    SELECT 
+      COALESCE(NULLIF(TRIM(m.custName), ''), 'Unknown Customer') as customer,
+      COALESCE(NULLIF(TRIM(m.proj), ''), '-') as project,
+      COALESCE(NULLIF(TRIM(m.loc), ''), '-') as location,
+      MONTH(COALESCE(NULLIF(m.subDate, ''), NULLIF(m.jmsDate, ''), NOW())) as invoice_month,
+      SUM(COALESCE(CAST(m.invAmt AS DECIMAL(15,2)), 0)) as revenue
+    FROM global_invoice_manual_data m
+    WHERE (m.is_standalone = 1 OR m.invoice_id IS NULL)
+      AND (COALESCE(NULLIF(m.subDate, ''), NULLIF(m.jmsDate, '')) >= ? AND COALESCE(NULLIF(m.subDate, ''), NULLIF(m.jmsDate, '')) <= ?)
+    GROUP BY m.custName, m.proj, m.loc, MONTH(COALESCE(NULLIF(m.subDate, ''), NULLIF(m.jmsDate, ''), NOW()))
   `;
-    const [liveRows] = await database_1.db.query(liveQuery, [year]);
+    const shortYearStr = `${startYrNum}-${String(startYrNum + 1).slice(-2)}`;
+    const [liveRows] = await database_1.db.query(liveQuery, [year, shortYearStr, startDateStr, endDateStr, startDateStr, endDateStr]);
     const monthMap = {
         4: 'apr', 5: 'may', 6: 'jun', 7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec',
         1: 'jan', 2: 'feb', 3: 'mar'
@@ -58,7 +76,8 @@ const fetchRevenueDirectExpenses = async (year) => {
         }
         const mStr = monthMap[row.invoice_month];
         if (mStr) {
-            groupedData[groupKey].revenueMonths[mStr] = parseFloat(row.revenue);
+            const existingManual = groupedData[groupKey].revenueMonths[mStr] || 0;
+            groupedData[groupKey].revenueMonths[mStr] = existingManual + parseFloat(row.revenue);
         }
     });
     return Object.values(groupedData);

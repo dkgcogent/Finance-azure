@@ -120,11 +120,14 @@ const getVendorTrips = async (req, res) => {
         AND (? IS NULL OR ? = '' OR ProjectID = ?)
       `, [actualVendorName, vendorName, startDate, endDate, custIdVal, custIdVal, custIdVal, projIdVal, projIdVal, projIdVal]);
             // Calculate Annexure Data
+            const selectedStateAdhoc = (locationId && String(locationId).trim() && String(locationId) !== 'undefined' && String(locationId) !== 'null')
+                ? String(locationId).trim()
+                : '';
             const annexureData = trips.map((t, index) => {
                 const rawHub = t.CustomerSite || t.CustSite || t.Location || '';
                 const cleanHub = rawHub.replace(/^[A-Z]{2}\s*-\s*/i, '').replace(/\s*\(Emp:.*?\)/gi, '').trim();
                 const locMatch = rawHub.match(/^([A-Z]{2})\s*-\s*/i);
-                const cleanLoc = locMatch ? locMatch[1].toUpperCase() : (t.Location || 'UP');
+                const cleanLoc = selectedStateAdhoc || (locMatch ? locMatch[1].toUpperCase() : (t.State || t.Location || 'UP'));
                 return {
                     id: index + 1,
                     date: t.date || '',
@@ -225,11 +228,14 @@ const getVendorTrips = async (req, res) => {
         AND (? IS NULL OR ? = '' OR ProjectID = ?)
       `, [actualVendorName, vendorName, startDate, endDate, custIdVal, custIdVal, custIdVal, projIdVal, projIdVal, projIdVal]);
             // Calculate Annexure Data (Detailed Logs)
+            const selectedState = (locationId && String(locationId).trim() && String(locationId) !== 'undefined' && String(locationId) !== 'null')
+                ? String(locationId).trim()
+                : '';
             const annexureData = trips.map((t, index) => {
                 const rawHub = t.CustomerSite || t.Location || '';
                 const cleanHub = rawHub.replace(/^[A-Z]{2}\s*-\s*/i, '').replace(/\s*\(Emp:.*?\)/gi, '').trim();
                 const locMatch = rawHub.match(/^([A-Z]{2})\s*-\s*/i);
-                const cleanLoc = locMatch ? locMatch[1].toUpperCase() : (t.Location || 'UP');
+                const cleanLoc = selectedState || (locMatch ? locMatch[1].toUpperCase() : (t.State || t.Location || 'UP'));
                 return {
                     id: index + 1,
                     date: t.date || '',
@@ -299,6 +305,22 @@ const getVendorTrips = async (req, res) => {
                 misGroups[veh].extKmCharge += (Number(t.ExtraKMCost) || 0);
                 misGroups[veh].toll += ((Number(t.TollExpenses) || 0) + (Number(t.ParkingCharges) || 0));
                 misGroups[veh].dcm += (Number(t.DCMCharges) || 0);
+                // Calculate extra hours if duty hours exceed package hours (default 12)
+                const packageHrs = misGroups[veh].hrs || 12;
+                let tripDutyHrs = Number(t.TotalDutyHours || 0);
+                if (!tripDutyHrs && t.ArrivalTimeAtHub && t.OutTimeFromHub) {
+                    const inParts = String(t.ArrivalTimeAtHub).split(':').map(Number);
+                    const outParts = String(t.OutTimeFromHub).split(':').map(Number);
+                    if (inParts.length >= 2 && outParts.length >= 2 && !isNaN(inParts[0]) && !isNaN(outParts[0])) {
+                        const inMins = inParts[0] * 60 + (inParts[1] || 0);
+                        const outMins = outParts[0] * 60 + (outParts[1] || 0);
+                        const diffMins = outMins >= inMins ? outMins - inMins : (24 * 60 - inMins) + outMins;
+                        tripDutyHrs = diffMins / 60;
+                    }
+                }
+                if (tripDutyHrs > packageHrs) {
+                    misGroups[veh].extHr += (tripDutyHrs - packageHrs);
+                }
             });
             const misData = Object.values(misGroups).map((m, idx) => {
                 const extKm = Math.max(0, m.totKms - (m.actualDays * m.perDayKm));
