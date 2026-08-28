@@ -77,12 +77,16 @@ export function DataTable<TData, TValue>({
     const dataRows = rows.map(row => {
       return visibleColumns.map(col => {
         const val = row.getValue(col.id)
-        return `"${String(val).replace(/"/g, '""')}"`
+        const strVal = String(val ?? '')
+        if (col.id.toLowerCase().includes('account') || col.id.toLowerCase().includes('accno') || /^0\d+$/.test(strVal)) {
+          return `"=""${strVal}"""`
+        }
+        return `"${strVal.replace(/"/g, '""')}"`
       }).join(",")
     })
     
     const csvContent = [headerRow, ...dataRows].join("\n")
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.setAttribute("href", url)

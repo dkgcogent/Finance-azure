@@ -105,12 +105,22 @@ export default function CustomerInvoice() {
     if (!invoiceCustomer) return [];
     const locs = locations.filter((l: any) => l.customerId === parseInt(invoiceCustomer) || l.customerId === invoiceCustomer);
     const seenNames = new Set<string>();
-    return locs.filter((l: any) => {
-      const name = (l.name || '').trim();
-      if (!name || seenNames.has(name)) return false;
-      seenNames.add(name);
-      return true;
+    const result: any[] = [];
+
+    locs.forEach((l: any) => {
+      const rawName = (l.name || l.Location || '').trim();
+      if (!rawName) return;
+
+      const parts = rawName.split(',').map((p: string) => p.trim()).filter(Boolean);
+      parts.forEach((part: string) => {
+        if (!seenNames.has(part)) {
+          seenNames.add(part);
+          result.push({ id: part, name: part, customerId: l.customerId });
+        }
+      });
     });
+
+    return result;
   }, [locations, invoiceCustomer]);
 
   const reportMutation = useGenerateInvoiceReports()
@@ -649,7 +659,7 @@ export default function CustomerInvoice() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">Location</label>
+                  <label className="text-sm font-medium">State</label>
                   <select
                     value={invoiceLocation}
                     onChange={(e) => {
@@ -659,7 +669,7 @@ export default function CustomerInvoice() {
                     disabled={!invoiceProject || isMasterLoading}
                     className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <option value="">Select a location...</option>
+                    <option value="">Select a state...</option>
                     {filteredLocations.map((l: any) => (
                       <option key={l.id} value={l.id}>{l.name}</option>
                     ))}

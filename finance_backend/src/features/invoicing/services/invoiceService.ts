@@ -187,8 +187,46 @@ export const invoiceService = {
   },
 
   getLocations: async () => {
-    const [rows] = await db.query("SELECT DISTINCT Location as id, TRIM(SUBSTRING_INDEX(Location, '-', 1)) as name, CustomerID as customerId FROM project WHERE Location IS NOT NULL AND Location != ''");
-    return rows;
+    const [ccRows]: any = await db.query(
+      "SELECT DISTINCT state as name, company_name FROM customer_commercial WHERE state IS NOT NULL AND state != ''"
+    );
+    const [projRows]: any = await db.query(
+      "SELECT DISTINCT State as name, CustomerID as customerId FROM project WHERE State IS NOT NULL AND State != ''"
+    );
+
+    const locationList: any[] = [];
+    const seen = new Set<string>();
+
+    const extractCustomerId = (companyName: string) => {
+      if (!companyName) return null;
+      const match = companyName.match(/\/ (\d+)$/);
+      return match ? parseInt(match[1]) : null;
+    };
+
+    ccRows.forEach((r: any) => {
+      const custId = extractCustomerId(r.company_name);
+      const stateParts = (r.name || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+      stateParts.forEach((st: string) => {
+        const key = `${custId || 'all'}___${st}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          locationList.push({ id: st, name: st, customerId: custId });
+        }
+      });
+    });
+
+    projRows.forEach((r: any) => {
+      const stateParts = (r.name || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+      stateParts.forEach((st: string) => {
+        const key = `${r.customerId}___${st}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          locationList.push({ id: st, name: st, customerId: r.customerId });
+        }
+      });
+    });
+
+    return locationList;
   },
 
   saveInvoice: async (data: any) => {
@@ -383,6 +421,17 @@ export const invoiceService = {
       console.error("Error fetching fallback customer GSTIN:", e);
     }
     
+    let coreCustomerName = '';
+    try {
+      if (customerId) {
+        const [cRows]: any = await db.query("SELECT Name, MasterCustomerName FROM customer WHERE CustomerID = ?", [customerId]);
+        if (cRows.length > 0) {
+          const rawName = cRows[0].Name || cRows[0].MasterCustomerName || '';
+          coreCustomerName = rawName.replace(/Pvt\.?\s*Ltd\.?/i, '').replace(/Private\s*Limited/i, '').trim();
+        }
+      }
+    } catch (e) {}
+
     // Fetch MIS data
     let query = '';
     let params: any[] = [];
@@ -446,11 +495,22 @@ export const invoiceService = {
         LEFT JOIN project p ON p.ProjectID = ft.ProjectID
         LEFT JOIN customer_commercial cc ON ft.customer_commercial_id = cc.id
         LEFT JOIN vendor_commercial vc ON ft.vendor_commercial_id = vc.id
-        WHERE (ft.CustomerID = ? OR ? IS NULL)
-          AND (ft.ProjectID = ? OR ? IS NULL)
-          AND COALESCE(ft.ServiceDate, ft.TransactionDate) BETWEEN ? AND ?
+        WHERE (? IS NULL OR ft.CustomerID = ? OR (ft.CompanyName IS NOT NULL AND ft.CompanyName LIKE CONCAT('%', ?, '%')) OR ft.CustomerID IN (
+            SELECT c2.CustomerID FROM customer c1 JOIN customer c2 ON COALESCE(NULLIF(c1.MasterCustomerName,''), c1.Name) = COALESCE(NULLIF(c2.MasterCustomerName,''), c2.Name) WHERE c1.CustomerID = ?
+          ))
+          AND (? IS NULL OR ft.ProjectID = ? OR p.ProjectName IN (
+            SELECT ProjectName FROM project WHERE ProjectID = ?
+          ))
+          AND (? IS NULL OR ? = '' OR ? = 'Select a state...' OR cc.state LIKE ? OR p.State LIKE ? OR ft.Location LIKE ?)
+          AND DATE_FORMAT(COALESCE(ft.ServiceDate, ft.TransactionDate), '%Y-%m-%d') BETWEEN ? AND ?
       `;
-      params = [customerId, customerId, projectId || null, projectId || null, startDate, endDate];
+      const stateLike = locationId ? `%${locationId}%` : '%';
+      params = [
+        customerId || null, customerId || null, coreCustomerName || 'NON_MATCHING_DUMMY', customerId || null,
+        projectId || null, projectId || null, projectId || null,
+        locationId || null, locationId || '', locationId || '', stateLike, stateLike, stateLike,
+        startDate, endDate
+      ];
     } else {
       // Adhoc: match by CustomerID + ProjectID + date range
       query = `
@@ -505,11 +565,22 @@ export const invoiceService = {
         LEFT JOIN vendor vend ON vend.VendorID = at.VendorID
         LEFT JOIN customer_commercial cc ON at.customer_commercial_id = cc.id
         LEFT JOIN vendor_commercial vc ON at.vendor_commercial_id = vc.id
-        WHERE (at.CustomerID = ? OR ? IS NULL)
-          AND (at.ProjectID = ? OR ? IS NULL)
-          AND COALESCE(at.ServiceDate, at.TransactionDate) BETWEEN ? AND ?
+        WHERE (? IS NULL OR at.CustomerID = ? OR (at.CompanyName IS NOT NULL AND at.CompanyName LIKE CONCAT('%', ?, '%')) OR at.CustomerID IN (
+            SELECT c2.CustomerID FROM customer c1 JOIN customer c2 ON COALESCE(NULLIF(c1.MasterCustomerName,''), c1.Name) = COALESCE(NULLIF(c2.MasterCustomerName,''), c2.Name) WHERE c1.CustomerID = ?
+          ))
+          AND (? IS NULL OR at.ProjectID = ? OR p.ProjectName IN (
+            SELECT ProjectName FROM project WHERE ProjectID = ?
+          ))
+          AND (? IS NULL OR ? = '' OR ? = 'Select a state...' OR cc.state LIKE ? OR p.State LIKE ? OR at.Location LIKE ?)
+          AND DATE_FORMAT(COALESCE(at.ServiceDate, at.TransactionDate), '%Y-%m-%d') BETWEEN ? AND ?
       `;
-      params = [customerId, customerId, projectId || null, projectId || null, startDate, endDate];
+      const stateLike = locationId ? `%${locationId}%` : '%';
+      params = [
+        customerId || null, customerId || null, coreCustomerName || 'NON_MATCHING_DUMMY', customerId || null,
+        projectId || null, projectId || null, projectId || null,
+        locationId || null, locationId || '', locationId || '', stateLike, stateLike, stateLike,
+        startDate, endDate
+      ];
     }
     
     console.log('[generateReports] tripType:', tripType);

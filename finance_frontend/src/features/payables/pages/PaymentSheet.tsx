@@ -214,10 +214,10 @@ export default function PaymentSheet() {
     const headers = ['Employee Name', 'Employee Code', 'Account Number', 'IFSC Code', 'Beneficiary Name', 'Amount', 'Remarks'];
     const csvContent = [
       headers.join(','),
-      ...data.map(d => `"${d.employeeName}","${d.employeeCode}","${d.beneficiaryAccountNo}","${d.ifscCode}","${d.beneficiaryName}","${d.amount}","${d.remarksBeneficiary}"`)
+      ...data.map(d => `"${d.employeeName}","${d.employeeCode}","=""${d.beneficiaryAccountNo}"""\,"${d.ifscCode}","${d.beneficiaryName}","${d.amount}","${d.remarksBeneficiary}"`)
     ].join('\n');
     
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = `Imprest_Payment_${month}_${year}.csv`;
