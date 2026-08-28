@@ -44,6 +44,7 @@ export const createCustomerInvoice = async (
     projectWork?: string;
     location?: string;
     hsn?: string;
+    preGeneratedInvoiceNumber?: string;
   }
 ) => {
   const fy = options?.financialYear || '2025-2026';
@@ -54,11 +55,12 @@ export const createCustomerInvoice = async (
   const parts = fy.split('-');
   const shortYear = parts.length >= 2 ? `${parts[0].slice(-2)}-${parts[1].slice(-2)}` : '25-26';
   const prefix = `CLPL/${shortYear}/`;
-  const randomNum = String(Math.floor(Math.random() * 999)).padStart(3, '0');
-  const invoiceNumber = `${prefix}${randomNum}`;
+  // Use pre-generated invoice number if provided (generated at Proceed time),
+  // otherwise fall back to random generation.
+  const invoiceNumber = options?.preGeneratedInvoiceNumber || `${prefix}${String(Math.floor(Math.random() * 999)).padStart(3, '0')}`;
 
   // Inject the dynamically generated invoice number into the HTML payload
-  const modifiedHtml = options?.html ? options.html.replace(/CLPL\/25-26\/—/g, invoiceNumber) : undefined;
+  const modifiedHtml = options?.html ? options.html.replace(/CLPL\/\d{2}-\d{2}\/[^<"\s]*/g, invoiceNumber) : undefined;
 
   const payload = {
     invoiceNumber,

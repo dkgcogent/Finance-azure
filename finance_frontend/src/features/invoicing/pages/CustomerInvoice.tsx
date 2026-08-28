@@ -1,4 +1,6 @@
 import React, { useMemo, useState, useRef } from "react"
+import { useNavigate } from "react-router-dom"
+import * as XLSX from "xlsx"
 import { ColumnDef } from "@tanstack/react-table"
 import { usePermissions } from "@/hooks/usePermissions"
 import { DataTable, SortableHeader } from "@/components/shared/DataTable"
@@ -29,8 +31,9 @@ import { InvoicePreviewTemplate } from "../components/InvoicePreviewTemplate"
 import { useMasterData, useGenerateInvoiceReports } from "../hooks/useInvoiceReports"
 
 export default function CustomerInvoice() {
+  const navigate = useNavigate()
   const [view, setView] = useState<"list" | "create">("list")
-  const [createStep, setCreateStep] = useState<"details" | "mis" | "annexures" | "preview">("details")
+  const [createStep, setCreateStep] = useState<"details" | "cards" | "mis" | "annexures" | "preview">("details")
   const [invoiceCustomer, setInvoiceCustomer] = useState("")
   const [invoiceLocation, setInvoiceLocation] = useState("")
   const [invoiceType, setInvoiceType] = useState("")
@@ -45,6 +48,7 @@ export default function CustomerInvoice() {
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0])
   const [serviceProviderCode, setServiceProviderCode] = useState("")
   const [costCode, setCostCode] = useState("")
+  const [previewInvoiceNumber, setPreviewInvoiceNumber] = useState("")
 
   const { customers, projects, locations, isLoading: isMasterLoading } = useMasterData()
   
@@ -59,6 +63,43 @@ export default function CustomerInvoice() {
     projects.find((p: any) => String(p.id) === String(invoiceProject)),
     [projects, invoiceProject]
   )
+
+  const dynamicSubtitle = useMemo(() => {
+    const cust = selectedCustomer?.name?.split(' (')[0] || selectedCustomer?.name;
+    const proj = selectedProject?.name;
+    const loc = invoiceLocation;
+
+    if (cust && proj && loc) {
+      return `For the ${cust} of ${proj} Project in ${loc}`;
+    } else if (cust && proj) {
+      return `For the ${cust} of ${proj} Project`;
+    } else if (cust && loc) {
+      return `For the ${cust} in ${loc}`;
+    } else if (cust) {
+      return `For ${cust}`;
+    }
+    return "Draft a new invoice to send to a customer.";
+  }, [selectedCustomer, selectedProject, invoiceLocation]);
+
+  const reportPeriodSubtitle = useMemo(() => {
+    const formatD = (d?: string) => {
+      if (!d) return '';
+      const parts = d.split('-');
+      if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+      return d;
+    };
+    const range = (startDate && endDate) ? `${formatD(startDate)} to ${formatD(endDate)}` : '';
+    const typeStr = invoiceType ? `${invoiceType} Type` : '';
+
+    if (range && typeStr) {
+      return `Period: ${range} (${typeStr})`;
+    } else if (range) {
+      return `Period: ${range}`;
+    } else if (typeStr) {
+      return typeStr;
+    }
+    return '';
+  }, [startDate, endDate, invoiceType]);
 
   // Ecosystem detection
   const ecosystem = useMemo(() => {
@@ -275,7 +316,8 @@ export default function CustomerInvoice() {
         project: selectedProjectName,
         projectWork: projectWorkValue,
         location: selectedLocationName,
-        hsn: "996511"
+        hsn: "996511",
+        preGeneratedInvoiceNumber: previewInvoiceNumber || undefined
       }
     }, {
       onSuccess: () => {
@@ -450,7 +492,7 @@ export default function CustomerInvoice() {
     document.body.removeChild(link);
   }
   const handleDownloadPDF = () => {
-    const printArea = document.getElementById('invoice-print-area');
+    const printArea = document.getElementById('invoice-print-area') || document.getElementById('invoice-print-area-hidden');
     if (!printArea) return;
 
     // Gather existing stylesheets (Tailwind, etc.)
@@ -512,6 +554,62 @@ export default function CustomerInvoice() {
     }
   }
 
+  const handleDownloadAll = () => {
+    if (!reportData) return;
+    const wb = XLSX.utils.book_new();
+
+    const fy = financialYear || '2025-2026';
+    const parts = fy.split('-');
+    const shortYear = parts.length >= 2 ? `${parts[0].slice(-2)}-${parts[1].slice(-2)}` : '25-26';
+    const invNo = previewInvoiceNumber || `CLPL/${shortYear}/---`;
+
+    // ── Sheet 1: Annexure ───────────────────────────────────────────────────
+    let annexureRows: any[][] = [];
+    if (reportData.flipkartAnnexureData && reportData.flipkartAnnexureData.length > 0) {
+      annexureRows = [
+        ["S. No.", "Vehicle No", "Type of Vehicle", "Mode", "Location", "Vertical", "No. of hours", "Fixed Kms (31 Days)", "Agreement Rate", "Diesel Hike", "Total Charges with Diesel Hike", "Nos. Of Working days to be done", "Nos. of days actual done", "Total KMs", "Extra Hour Amount", "Extra Hour", "Extra Hour Charges", "Extra KM rate", "Extra Km", "Extra Km Charge", "Total Amount", "Per Day Cost", "T. Working days Amount", "Toll charges", "Amount"],
+        ...reportData.flipkartAnnexureData.map((r: any, i: number) => [
+          i + 1, r.vehicleNo, r.typeOfVehicle, r.mode, r.location, r.vertical, r.noOfHours, r.fixedKms, r.agreementRate, r.dieselHike, r.totalChargesWithDieselHike, r.workingDaysToBeDone, r.daysActualDone, r.totalKMs, r.extraHourRate, r.extraHour, r.extraHourCharges, r.extraKmRate, r.extraKm, r.extraKmCharge, r.totalAmount, r.perDayCost, r.tWorkingDaysAmount, r.tollCharges, r.amount
+        ])
+      ];
+    } else if (reportData.flipkartAdhocAnnexureData && reportData.flipkartAdhocAnnexureData.length > 0) {
+      annexureRows = [
+        ["S. No.", "Location", "No Of Trips", "Fix Rate", "Extra KM", "Extra KM Rate", "Total Fix Cost", "Extra KM Charge", "Handling Charges", "Total"],
+        ...reportData.flipkartAdhocAnnexureData.map((r: any, i: number) => [
+          i + 1, r.location, r.noOfTrips, r.fixRate, r.extraKm, r.extraKmRate, r.totalFixCost, r.extraKmCharge, r.handlingCharges, r.amount
+        ])
+      ];
+    } else if (reportData.annexureData && reportData.annexureData.length > 0) {
+      annexureRows = [
+        ["Location", "No. of Trips", "Rates", "Extra KM", "Extra KM Rates", "Extra Hrs", "Extra Hrs Rates", "Total Fix Cost", "Extra KM Cost", "Extra Hrs Cost", "Handling", "Amount"],
+        ...reportData.annexureData.map((r: any) => [
+          r.location, r.noOfTrips, r.rates ?? r.fixRate ?? r.agreementRate ?? 0, r.extraKm, r.extraKmRates ?? r.extraKmRate ?? 0, r.extraHrs ?? r.extraHour ?? 0, r.extraHrsRates ?? r.extraHrsRate ?? 0, r.totalFixCost ?? r.amount ?? 0, r.extraKmCost ?? r.extraKmCharge ?? 0, r.extraHrsCost ?? r.extraHrsChar ?? 0, r.handling ?? r.handlingCharges ?? 0, r.totalAmount ?? r.amount ?? 0
+        ])
+      ];
+    }
+    if (annexureRows.length > 0) {
+      const annexureSheet = XLSX.utils.aoa_to_sheet(annexureRows);
+      XLSX.utils.book_append_sheet(wb, annexureSheet, "Anixture");
+    }
+
+    // ── Sheet 2: MIS ────────────────────────────────────────────────────────
+    const misRows = [
+      ["Date", "Consignor Name", "Vendor", "Vehicle No.", "Vehicle Ownership", "Actual Start", "Actual End", "Transit Time", "Total Hrs", "Extra Hrs", "Working Hours", "Start Odometer", "End Odometer", "Distance", "Extra Km", "Order Number", "Trip Log Number"],
+      ...(reportData.misData || []).map((r: any) => [
+        r.date ? new Date(r.date).toLocaleDateString('en-IN') : '',
+        r.consignorName || '', r.vendor || '', r.vehicle || '', r.vehicleOwnership || '',
+        r.actualStart || '', r.actualEnd || '', Math.round(Number(r.transit || 0)),
+        r.total ?? 0, r.extra ?? 0, r.working ?? 0, r.startKm ?? 0, r.endKm ?? 0,
+        r.distance ?? 0, r.extraKm ?? 0, r.orderNumber || '', r.tripLogNumber || ''
+      ])
+    ];
+    const misSheet = XLSX.utils.aoa_to_sheet(misRows);
+    XLSX.utils.book_append_sheet(wb, misSheet, "MIS");
+
+    // Download the combined MIS + Annexure Excel file
+    XLSX.writeFile(wb, `Customer_Invoice_${invNo.replace(/\//g, '-')}_MIS_Annexure.xlsx`);
+  };
+
   const renderTimeline = (status: string) => {
     const steps = [
       { label: "Draft Created", icon: FileText, done: true },
@@ -547,11 +645,16 @@ export default function CustomerInvoice() {
       {/* Header */}
       {view === "list" ? (
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-3xl font-bold tracking-tight">Customer Invoices</h2>
-            <p className="text-muted-foreground mt-1">
-              Manage your accounts receivable and issue new invoices.
-            </p>
+          <div className="flex items-center gap-4">
+            <Button variant="outline" size="icon" className="h-9 w-9 rounded-full" onClick={() => navigate("/invoice")}>
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+            <div>
+              <h2 className="text-3xl font-bold tracking-tight">Customer Invoices</h2>
+              <p className="text-muted-foreground mt-1">
+                Manage your accounts receivable and issue new invoices.
+              </p>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Select value={financialYear} onValueChange={(val) => setFinancialYear(val || "")}>
@@ -583,19 +686,54 @@ export default function CustomerInvoice() {
             </Button>
             <div>
               <h2 className="text-3xl font-bold tracking-tight">Create Invoice</h2>
-              <p className="text-muted-foreground mt-1">
-                Draft a new invoice to send to a customer.
+              <p className="text-muted-foreground mt-1 font-medium">
+                {dynamicSubtitle}
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-3 text-sm font-medium bg-muted/50 px-4 py-2 rounded-full">
-            <span className={createStep === "details" ? "text-primary font-bold" : "text-muted-foreground"}>Creating</span>
-            <span className="text-muted-foreground">→</span>
-            <span className={createStep === "mis" ? "text-primary font-bold" : "text-muted-foreground"}>MIS</span>
-            <span className="text-muted-foreground">→</span>
-            <span className={createStep === "annexures" ? "text-primary font-bold" : "text-muted-foreground"}>Annexures</span>
-            <span className="text-muted-foreground">→</span>
-            <span className={createStep === "preview" ? "text-primary font-bold" : "text-muted-foreground"}>Preview</span>
+          <div className="flex items-center gap-2 bg-muted/40 p-2 rounded-2xl border border-border/60 shadow-sm select-none">
+            <button
+              type="button"
+              disabled={!reportData}
+              onClick={() => reportData && setCreateStep("mis")}
+              className={`px-6 py-2.5 text-base font-semibold rounded-xl transition-all ${
+                createStep === "mis"
+                  ? "bg-blue-600 text-white shadow-md"
+                  : reportData
+                  ? "text-muted-foreground hover:text-foreground hover:bg-muted/60 cursor-pointer"
+                  : "text-muted-foreground/30 cursor-not-allowed"
+              }`}
+            >
+              MIS
+            </button>
+            <button
+              type="button"
+              disabled={!reportData}
+              onClick={() => reportData && setCreateStep("annexures")}
+              className={`px-6 py-2.5 text-base font-semibold rounded-xl transition-all ${
+                createStep === "annexures"
+                  ? "bg-blue-600 text-white shadow-md"
+                  : reportData
+                  ? "text-muted-foreground hover:text-foreground hover:bg-muted/60 cursor-pointer"
+                  : "text-muted-foreground/30 cursor-not-allowed"
+              }`}
+            >
+              Annexures
+            </button>
+            <button
+              type="button"
+              disabled={!reportData}
+              onClick={() => reportData && setCreateStep("preview")}
+              className={`px-6 py-2.5 text-base font-semibold rounded-xl transition-all ${
+                createStep === "preview"
+                  ? "bg-blue-600 text-white shadow-md"
+                  : reportData
+                  ? "text-muted-foreground hover:text-foreground hover:bg-muted/60 cursor-pointer"
+                  : "text-muted-foreground/30 cursor-not-allowed"
+              }`}
+            >
+              Invoice
+            </button>
           </div>
         </div>
       )}
@@ -720,12 +858,97 @@ export default function CustomerInvoice() {
                 )}
               </div>
             )}
+            {createStep === "cards" && (
+              <div className="py-8 px-6">
+                {/* Header with Title and Download All Button */}
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8 pb-6 border-b">
+                  <div>
+                    <h3 className="text-2xl font-bold tracking-tight">Reports Generated</h3>
+                    <p className="text-muted-foreground mt-1 font-medium">
+                      {reportPeriodSubtitle}
+                    </p>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="default"
+                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300 font-semibold px-5 py-2 shadow-sm gap-2 shrink-0 transition-colors"
+                    onClick={handleDownloadAll}
+                  >
+                    <Download className="w-4 h-4 text-emerald-600" />
+                    Download
+                  </Button>
+                </div>
+
+                {/* 3 Interactive Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                  {/* MIS Card */}
+                  <button
+                    onClick={() => setCreateStep("mis")}
+                    className="group relative flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-border bg-white p-8 text-center shadow-sm hover:border-blue-500 hover:shadow-lg transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <div className="flex items-center justify-center w-16 h-16 rounded-full bg-green-100 group-hover:bg-green-200 transition-colors">
+                      <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">MIS Report</h4>
+                    </div>
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+
+                  {/* Annexure Card */}
+                  <button
+                    onClick={() => setCreateStep("annexures")}
+                    className="group relative flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-border bg-white p-8 text-center shadow-sm hover:border-blue-500 hover:shadow-lg transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <div className="flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 group-hover:bg-blue-200 transition-colors">
+                      <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">Annexure</h4>
+                    </div>
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+
+                  {/* Invoice Preview Card */}
+                  <button
+                    onClick={() => setCreateStep("preview")}
+                    className="group relative flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-border bg-white p-8 text-center shadow-sm hover:border-blue-500 hover:shadow-lg transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    <div className="flex items-center justify-center w-16 h-16 rounded-full bg-purple-100 group-hover:bg-purple-200 transition-colors">
+                      <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5zm6-10.125a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0zm1.294 6.336a6.721 6.721 0 01-3.17.789 6.721 6.721 0 01-3.168-.789 3.376 3.376 0 016.338 0z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h4 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">Invoice</h4>
+                    </div>
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {createStep === "mis" && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-medium">MIS Report</h3>
-                    <p className="text-sm text-muted-foreground">Raw trip data from the selected parameters.</p>
+                    <h3 className="text-lg font-bold">MIS Report</h3>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => handleDownloadExcel("mis")}>
@@ -789,8 +1012,7 @@ export default function CustomerInvoice() {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h3 className="text-lg font-medium">Annexure Details</h3>
-                    <p className="text-sm text-muted-foreground">Generated based on the selected invoice parameters.</p>
+                    <h3 className="text-lg font-bold">Annexure Details</h3>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => handleDownloadAnnexurePDF()}>
@@ -958,6 +1180,27 @@ export default function CustomerInvoice() {
             )}
 
 
+            {/* Hidden invoice container so PDF is always printable from any step (e.g. Download All) */}
+            {reportData && createStep !== "preview" && (
+              <div id="invoice-print-area-hidden" className="hidden">
+                <InvoicePreviewTemplate
+                  customerName={selectedCustomer?.name}
+                  customerCode={selectedCustomer?.code}
+                  projectName={selectedProject?.name}
+                  invoiceLocation={invoiceLocation}
+                  invoiceType={invoiceType}
+                  startDate={startDate}
+                  endDate={endDate}
+                  invoiceDate={invoiceDate}
+                  reportData={reportData}
+                  workOrderNo={workOrderNo}
+                  serviceProviderCode={serviceProviderCode}
+                  costCode={costCode}
+                  invoiceNumber={previewInvoiceNumber}
+                />
+              </div>
+            )}
+
             {createStep === "preview" && (
               <div id="invoice-print-area">
                 <InvoicePreviewTemplate
@@ -973,6 +1216,7 @@ export default function CustomerInvoice() {
                   workOrderNo={workOrderNo}
                   serviceProviderCode={serviceProviderCode}
                   costCode={costCode}
+                  invoiceNumber={previewInvoiceNumber}
                 />
               </div>
             )}
@@ -981,16 +1225,17 @@ export default function CustomerInvoice() {
               <Button
                 variant="outline"
                 onClick={() => {
-                  if (createStep === "preview") setCreateStep("annexures")
-                  else if (createStep === "annexures") setCreateStep("mis")
-                  else if (createStep === "mis") setCreateStep("details")
+                  if (createStep === "preview") setCreateStep("cards")
+                  else if (createStep === "annexures") setCreateStep("cards")
+                  else if (createStep === "mis") setCreateStep("cards")
+                  else if (createStep === "cards") setCreateStep("details")
                   else {
                     setView("list")
                     setCreateStep("details")
                   }
                 }}
               >
-                {createStep === "preview" ? "Cancel" : "Prev"}
+                {createStep === "details" ? "Cancel" : "← Back"}
               </Button>
               <div className="flex gap-2">
                 {createStep === "preview" && (
@@ -1014,16 +1259,21 @@ export default function CustomerInvoice() {
                       }, {
                         onSuccess: (data) => {
                           setReportData(data);
-                          setCreateStep("mis");
+                          // Generate invoice number NOW (at Proceed time) so it shows in preview
+                          const fy = financialYear || '2025-2026';
+                          const parts = fy.split('-');
+                          const shortYear = parts.length >= 2 ? `${parts[0].slice(-2)}-${parts[1].slice(-2)}` : '25-26';
+                          const randomNum = String(Math.floor(Math.random() * 999)).padStart(3, '0');
+                          setPreviewInvoiceNumber(`CLPL/${shortYear}/${randomNum}`);
+                          setCreateStep("cards");
                         }
                       });
                     }
-                    else if (createStep === "mis") setCreateStep("annexures")
-                    else if (createStep === "annexures") setCreateStep("preview")
                     else if (createStep === "preview") {
                       handleAddInvoice()
                     }
                   }}
+                  className={createStep === "cards" || createStep === "mis" || createStep === "annexures" ? "hidden" : ""}
                 >
                   {(reportMutation.isPending || createInvoiceMutation.isPending) && (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -1033,10 +1283,8 @@ export default function CustomerInvoice() {
                     : reportMutation.isPending
                     ? "Generating..."
                     : createStep === "preview"
-                    ? "Proceed"
-                    : createStep === "annexures"
-                    ? "Submit"
-                    : "Next"}
+                    ? "Save Invoice"
+                    : "Proceed"}
                 </Button>
               </div>
             </div>

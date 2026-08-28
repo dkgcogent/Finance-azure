@@ -47,6 +47,7 @@ export default function NewImprestRequest() {
   const [submittingRowId, setSubmittingRowId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [validationError, setValidationError] = useState<{ rowId: string; message: string } | null>(null);
 
   // Load previously saved imprests on mount
   useEffect(() => {
@@ -289,11 +290,30 @@ export default function NewImprestRequest() {
                           <Button
                             size="sm"
                             className="bg-blue-600 text-white hover:bg-blue-700 h-8 px-4 text-xs font-semibold rounded-full shadow-sm flex items-center justify-center mx-auto"
-                            onClick={() => setSubmittingRowId(row.id)}
+                            onClick={() => {
+                              // Validation: head must be selected
+                              if (!row.head || row.head.trim() === '') {
+                                setValidationError({ rowId: row.id, message: 'Please select a Head before submitting.' });
+                                return;
+                              }
+                              // Validation: amount must be non-zero
+                              const amt = Number(row.amount);
+                              if (!row.amount || isNaN(amt) || amt <= 0) {
+                                setValidationError({ rowId: row.id, message: 'Amount must be greater than zero to proceed.' });
+                                return;
+                              }
+                              setValidationError(null);
+                              setSubmittingRowId(row.id);
+                            }}
                           >
                             <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" />
                             Submit
                           </Button>
+                          {validationError?.rowId === row.id && (
+                            <p className="text-red-500 text-xs mt-1 whitespace-nowrap font-medium">
+                              ⚠ {validationError.message}
+                            </p>
+                          )}
                         </td>
                       </tr>
                     );

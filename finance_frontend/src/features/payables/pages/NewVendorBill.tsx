@@ -1,4 +1,5 @@
 import React, { useState, useRef, useMemo } from "react"
+import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -53,7 +54,7 @@ const mockFixedMisData = [
 import { numberToWords } from "@/lib/utils"
 
 export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
-  const [step, setStep] = useState<"details" | "mis" | "annexure" | "preview">("details")
+  const [step, setStep] = useState<"details" | "cards" | "mis" | "annexure" | "preview">("details")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [customerId, setCustomerId] = useState("")
   const [projectId, setProjectId] = useState("")
@@ -88,6 +89,63 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
       return true;
     });
   }, [locations, customerId]);
+
+  const selectedCustomer = useMemo(() =>
+    customers.find((c: any) => String(c.id) === String(customerId)),
+    [customers, customerId]
+  );
+  const selectedProject = useMemo(() =>
+    projects.find((p: any) => String(p.id) === String(projectId)),
+    [projects, projectId]
+  );
+  const selectedLocation = useMemo(() =>
+    locations.find((l: any) => String(l.id) === String(locationId)),
+    [locations, locationId]
+  );
+  const selectedVendor = useMemo(() =>
+    vendors?.find((v: any) => String(v.id) === String(vendorId)),
+    [vendors, vendorId]
+  );
+
+  const dynamicSubtitle = useMemo(() => {
+    const cust = selectedCustomer?.name?.split(' (')[0] || selectedCustomer?.name;
+    const proj = selectedProject?.name;
+    const loc = selectedLocation?.name;
+    const vend = selectedVendor?.name;
+
+    if (vend && proj && loc) {
+      return `For ${vend} (${cust || ''}) of ${proj} Project in ${loc}`;
+    } else if (cust && proj && loc) {
+      return `For the ${cust} of ${proj} Project in ${loc}`;
+    } else if (cust && proj) {
+      return `For the ${cust} of ${proj} Project`;
+    } else if (cust && loc) {
+      return `For the ${cust} in ${loc}`;
+    } else if (cust) {
+      return `For ${cust}`;
+    }
+    return "Draft a new vendor invoice linked to customer billing.";
+  }, [selectedCustomer, selectedProject, selectedLocation, selectedVendor]);
+
+  const reportPeriodSubtitle = useMemo(() => {
+    const formatD = (d?: string) => {
+      if (!d) return '';
+      const parts = d.split('-');
+      if (parts.length === 3) return `${parts[2]}-${parts[1]}-${parts[0]}`;
+      return d;
+    };
+    const range = (startDate && endDate) ? `${formatD(startDate)} to ${formatD(endDate)}` : '';
+    const typeStr = vehicleType ? `${vehicleType === 'fixed' ? 'Fixed' : 'Adhoc'} Type` : '';
+
+    if (range && typeStr) {
+      return `Period: ${range} (${typeStr})`;
+    } else if (range) {
+      return `Period: ${range}`;
+    } else if (typeStr) {
+      return typeStr;
+    }
+    return '';
+  }, [startDate, endDate, vehicleType]);
 
   const handleCustomerChange = (id: string) => {
     setCustomerId(id);
@@ -239,13 +297,67 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     }
   }
 
+  const handleDownloadAll = () => {
+    if (!vendorTrips) return;
+    const wb = XLSX.utils.book_new();
+
+    // ── Sheet 1: Annexure ───────────────────────────────────────────────────
+    let annexureRows: any[][] = [];
+    if (vehicleType === "adhoc") {
+      annexureRows = [
+        ["S. No.", "Location", "No Of Trips", "Rates", "Extra KM", "Extra KM Rate", "Extra Hrs Rate", "Fixed Cost", "Extra KM Cost", "DCM Charges", "Total Amount"],
+        ...(vendorTrips.misData || []).map((r: any) => [
+          r.id, r.location, r.noOfTrips, r.rates, r.extraKm, r.extraKmRate, r.extraHrsRate, r.fixedCost, r.extraKmCost, r.dcmCharges, r.totalAmount
+        ])
+      ];
+    } else {
+      annexureRows = [
+        ["S.No.", "Vehicle Number", "Type of Vehicle", "Mode", "Location", "Vertical", "No. of hours", "Fixed Kms", "Agreement Rate", "Diesel Hike", "Total Charges with Diesel Hike", "Nos. of Working days", "Nos of days actual done", "Total KMs", "Extra Hour Amount", "Extra Hour", "Extra Hours Rate", "Extra KM rate", "Dynamic Fuel incr", "Extra KM Rate D", "Per Day Cost", "Per Day KM Conside", "Actual Deployed Days", "Extra Km", "Extra Km Charge", "Total Amount", "Toll charges", "DCM Charges", "Final Amount"],
+        ...(vendorTrips.misData || []).map((r: any) => [
+          r.id, r.vehNo, r.vehType, r.mode, r.loc, r.vertical, r.hrs, r.fixedKms, r.agRate, r.dieselHike, r.totWithHike, r.workDays, r.actualDays, r.totKms, r.extHrAmt, r.extHr, r.extHrRate, r.extKmRate, r.dynFuel, r.totExtKmRate, r.perDayCost, r.perDayKm, r.actualDeployed, r.extKm, r.extKmCharge, r.totalAmt, r.toll, r.dcm, r.finalAmt
+        ])
+      ];
+    }
+    if (annexureRows.length > 0) {
+      const annexureSheet = XLSX.utils.aoa_to_sheet(annexureRows);
+      XLSX.utils.book_append_sheet(wb, annexureSheet, "Anixture");
+    }
+
+    // ── Sheet 2: MIS ────────────────────────────────────────────────────────
+    let misRows: any[][] = [];
+    if (vehicleType === "adhoc") {
+      misRows = [
+        ["Date", "Hub Name", "Billing Location", "Vendor", "Vehicle Number", "Vehicle Type", "Parent Vehicle", "Vehicle Ownership Type", "Driver Type", "In Time", "Out Time", "Start Odometer", "End Odometer", "Distance", "Extra Km"],
+        ...(vendorTrips.annexureData || []).map((r: any) => [
+          r.date, r.hub, r.loc, r.vendor, r.vehNo, r.vehType, r.parentVeh, r.ownType, r.driverType, r.inTime, r.outTime, r.startOdo, r.endOdo, r.dist, r.extraKm
+        ])
+      ];
+    } else {
+      misRows = [
+        ["Date", "Hub Name", "Billing Location", "Vendor", "Vehicle Number", "Vehicle Type", "Parent Vehicle", "Vehicle Ownership Type", "Driver Type", "In Time", "Out Time", "Start Odometer", "End Odometer", "Distance"],
+        ...(vendorTrips.annexureData || []).map((r: any) => [
+          r.date, r.hub, r.loc, r.vendor, r.vehNo, r.vehType, r.parentVeh, r.ownType, r.driverType, r.inTime, r.outTime, r.startOdo, r.endOdo, r.dist
+        ])
+      ];
+    }
+    if (misRows.length > 0) {
+      const misSheet = XLSX.utils.aoa_to_sheet(misRows);
+      XLSX.utils.book_append_sheet(wb, misSheet, "MIS");
+    }
+
+    const vendorNameStr = vendorTrips?.vendorInfo?.VendorName || vendors?.find(v => v.id.toString() === vendorId)?.name || 'Vendor';
+    XLSX.writeFile(wb, `Vendor_Invoice_${vendorNameStr.replace(/\s+/g, '_')}_MIS_Annexure.xlsx`);
+  };
+
   const handleNext = async () => {
     if (step === "details") {
-      setStep("mis")
+      setStep("cards");
+    } else if (step === "cards") {
+      setStep("mis");
     } else if (step === "mis") {
-      setStep("annexure")
+      setStep("annexure");
     } else if (step === "annexure") {
-      setStep("preview")
+      setStep("preview");
     } else if (step === "preview") {
       // Final submit
       try {
@@ -280,19 +392,17 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
         setIsSubmitting(false);
       }
     }
-  }
+  };
 
   const handlePrev = () => {
-    if (step === "preview") {
-      setStep("annexure")
-    } else if (step === "annexure") {
-      setStep("mis")
-    } else if (step === "mis") {
-      setStep("details")
+    if (step === "preview" || step === "annexure" || step === "mis") {
+      setStep("cards");
+    } else if (step === "cards") {
+      setStep("details");
     } else {
-      if (onCancel) onCancel()
+      if (onCancel) onCancel();
     }
-  }
+  };
 
   const handleExportCSV = () => {
     let dataToExport = [];
@@ -353,48 +463,62 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     <div className="flex-1 pb-8">
       {/* Header matching Create Invoice */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
-        {step === "preview" ? (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-4">
-              <Button variant="outline" size="icon" className="rounded-full shadow-sm" onClick={handlePrev}>
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <h2 className="text-3xl font-bold tracking-tight">VN/26-27/002</h2>
-            </div>
-            <div className="flex items-center gap-2 ml-14">
-              <span className="text-muted-foreground text-sm font-medium">Vendor Bill Details</span>
-              <span className="bg-blue-600 text-white px-2.5 py-0.5 rounded-full text-xs font-medium">Pending Verification</span>
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={handlePrev}>
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div>
-              <h2 className="text-3xl font-bold tracking-tight">Create Vendor Invoice</h2>
-              <p className="text-muted-foreground mt-1">
-                Draft a new vendor invoice linked to customer billing.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {step === "preview" ? (
-          <Button variant="outline" className="gap-2 bg-white shadow-sm" onClick={handleDownloadPDF}>
-            <Download className="h-4 w-4" /> Download PDF
+        <div className="flex items-center gap-4">
+          <Button variant="ghost" size="icon" onClick={handlePrev}>
+            <ArrowLeft className="h-5 w-5" />
           </Button>
-        ) : (
-          <div className="flex items-center gap-3 text-sm font-medium bg-muted/50 px-4 py-2 rounded-full">
-            <span className={step === "details" ? "text-primary font-bold" : "text-muted-foreground"}>Creating</span>
-            <span className="text-muted-foreground">→</span>
-            <span className={step === "mis" ? "text-primary font-bold" : "text-muted-foreground"}>MIS</span>
-            <span className="text-muted-foreground">→</span>
-            <span className={step === "annexure" ? "text-primary font-bold" : "text-muted-foreground"}>Annexure</span>
-            <span className="text-muted-foreground">→</span>
-            <span className="text-muted-foreground">Preview</span>
+          <div>
+            <h2 className="text-3xl font-bold tracking-tight">Create Vendor Invoice</h2>
+            <p className="text-muted-foreground mt-1 font-medium">
+              {dynamicSubtitle}
+            </p>
           </div>
-        )}
+        </div>
+
+        <div className="flex items-center gap-2 bg-muted/40 p-2 rounded-2xl border border-border/60 shadow-sm select-none">
+          <button
+            type="button"
+            disabled={!vendorTrips}
+            onClick={() => vendorTrips && setStep("mis")}
+            className={`px-6 py-2.5 text-base font-semibold rounded-xl transition-all ${
+              step === "mis"
+                ? "bg-blue-600 text-white shadow-md"
+                : vendorTrips
+                ? "text-muted-foreground hover:text-foreground hover:bg-muted/60 cursor-pointer"
+                : "text-muted-foreground/30 cursor-not-allowed"
+            }`}
+          >
+            MIS
+          </button>
+          <button
+            type="button"
+            disabled={!vendorTrips}
+            onClick={() => vendorTrips && setStep("annexure")}
+            className={`px-6 py-2.5 text-base font-semibold rounded-xl transition-all ${
+              step === "annexure"
+                ? "bg-blue-600 text-white shadow-md"
+                : vendorTrips
+                ? "text-muted-foreground hover:text-foreground hover:bg-muted/60 cursor-pointer"
+                : "text-muted-foreground/30 cursor-not-allowed"
+            }`}
+          >
+            Annexure
+          </button>
+          <button
+            type="button"
+            disabled={!vendorTrips}
+            onClick={() => vendorTrips && setStep("preview")}
+            className={`px-6 py-2.5 text-base font-semibold rounded-xl transition-all ${
+              step === "preview"
+                ? "bg-blue-600 text-white shadow-md"
+                : vendorTrips
+                ? "text-muted-foreground hover:text-foreground hover:bg-muted/60 cursor-pointer"
+                : "text-muted-foreground/30 cursor-not-allowed"
+            }`}
+          >
+            Invoice
+          </button>
+        </div>
       </div>
 
       <Card>
@@ -519,13 +643,96 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
             </div>
           )}
 
+          {step === "cards" && (
+            <div className="py-8 px-6">
+              {/* Header with Title and Download Button */}
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8 pb-6 border-b">
+                <div>
+                  <h3 className="text-2xl font-bold tracking-tight">Reports Generated</h3>
+                  <p className="text-muted-foreground mt-1 font-medium">
+                    {reportPeriodSubtitle}
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="default"
+                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300 font-semibold px-5 py-2 shadow-sm gap-2 shrink-0 transition-colors"
+                  onClick={handleDownloadAll}
+                >
+                  <Download className="w-4 h-4 text-emerald-600" />
+                  Download
+                </Button>
+              </div>
+
+              {/* 3 Interactive Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+                {/* MIS Card */}
+                <button
+                  onClick={() => setStep("mis")}
+                  className="group relative flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-border bg-white p-8 text-center shadow-sm hover:border-blue-500 hover:shadow-lg transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <div className="flex items-center justify-center w-16 h-16 rounded-full bg-green-100 group-hover:bg-green-200 transition-colors">
+                    <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">MIS Report</h4>
+                  </div>
+                  <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+
+                {/* Annexure Card */}
+                <button
+                  onClick={() => setStep("annexure")}
+                  className="group relative flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-border bg-white p-8 text-center shadow-sm hover:border-blue-500 hover:shadow-lg transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <div className="flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 group-hover:bg-blue-200 transition-colors">
+                    <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">Annexure</h4>
+                  </div>
+                  <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+
+                {/* Invoice Preview Card */}
+                <button
+                  onClick={() => setStep("preview")}
+                  className="group relative flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-border bg-white p-8 text-center shadow-sm hover:border-blue-500 hover:shadow-lg transition-all duration-200 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <div className="flex items-center justify-center w-16 h-16 rounded-full bg-purple-100 group-hover:bg-purple-200 transition-colors">
+                    <svg className="w-8 h-8 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 9h3.75M15 12h3.75M15 15h3.75M4.5 19.5h15a2.25 2.25 0 002.25-2.25V6.75A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25v10.5A2.25 2.25 0 004.5 19.5zm6-10.125a1.875 1.875 0 11-3.75 0 1.875 1.875 0 013.75 0zm1.294 6.336a6.721 6.721 0 01-3.17.789 6.721 6.721 0 01-3.168-.789 3.376 3.376 0 016.338 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">Invoice</h4>
+                  </div>
+                  <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
           {(step === "mis" || step === "annexure") && (
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-lg font-medium">{step === "mis" ? "MIS Report" : "Annexure"}</h3>
-                <p className="text-sm text-muted-foreground">
-                  {step === "mis" ? "Raw trip data from the selected parameters." : "Detailed summary and calculations."}
-                </p>
+                <h3 className="text-lg font-bold">{step === "mis" ? "MIS Report" : "Annexure"}</h3>
               </div>
               <div className="flex items-center gap-2">
                 {step === "annexure" && (
@@ -917,20 +1124,30 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
             </div>
           )}
 
-          <div className="flex justify-between items-center mt-8 pt-6 border-t">
-            <Button variant="outline" onClick={handlePrev}>Prev</Button>
-
-            <div className="flex items-center gap-4">
-              <Button
-                className="bg-blue-600 text-white hover:bg-blue-700"
-                onClick={handleNext}
-                disabled={(step === "details" && !vehicleType) || isTripsLoading || isSubmitting}
-              >
-                {(isTripsLoading || isSubmitting) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                {isSubmitting ? "Saving..." : step === "preview" ? "Submit" : "Next"}
+          {step !== "cards" && (
+            <div className="flex justify-between items-center mt-8 pt-6 border-t">
+              <Button variant="outline" onClick={handlePrev}>
+                {step === "details" ? "Cancel" : "← Back"}
               </Button>
+
+              <div className="flex items-center gap-4">
+                {step === "preview" && (
+                  <Button variant="outline" onClick={handleDownloadPDF}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Download PDF
+                  </Button>
+                )}
+                <Button
+                  className="bg-blue-600 text-white hover:bg-blue-700 font-semibold px-6"
+                  onClick={handleNext}
+                  disabled={(step === "details" && (!vehicleType || !vendorId || !customerId || !projectId)) || isTripsLoading || isSubmitting}
+                >
+                  {(isTripsLoading || isSubmitting) && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  {isSubmitting ? "Saving..." : step === "details" ? "Proceed" : step === "preview" ? "Submit" : "Next"}
+                </Button>
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </div>

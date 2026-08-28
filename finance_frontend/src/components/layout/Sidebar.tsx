@@ -1,5 +1,5 @@
 import React, { useState } from "react"
-import { NavLink } from "react-router-dom"
+import { Link, useLocation } from "react-router-dom"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   LayoutDashboard,
@@ -37,9 +37,60 @@ interface NavItem {
   children?: NavItem[]
 }
 
+const isItemActive = (itemPath?: string, currentPath: string = ""): boolean => {
+  if (!itemPath || itemPath === "#") return false;
+
+  if (itemPath === "/invoice") {
+    return (
+      currentPath === "/invoice" ||
+      currentPath.startsWith("/customer-invoice") ||
+      currentPath.startsWith("/cn-dn") ||
+      currentPath.startsWith("/vendor-bills") ||
+      currentPath.startsWith("/vendor-cn-dn")
+    );
+  }
+
+  if (itemPath === "/payables") {
+    return (
+      currentPath === "/payables" ||
+      currentPath.startsWith("/payment-sheet") ||
+      currentPath.startsWith("/vendor-payment-sheet") ||
+      currentPath.startsWith("/salary-payment-sheet") ||
+      currentPath.startsWith("/adhoc-vehicles") ||
+      currentPath.startsWith("/vehicles")
+    );
+  }
+
+  if (itemPath === "/imprest") {
+    return currentPath === "/imprest" || currentPath.startsWith("/imprest/");
+  }
+
+  if (itemPath === "/approvals") {
+    return currentPath === "/approvals" || currentPath.startsWith("/approvals/");
+  }
+
+  if (itemPath === "/budget") {
+    return currentPath === "/budget" || currentPath.startsWith("/budget/");
+  }
+
+  if (itemPath === "/actual") {
+    return currentPath === "/actual" || currentPath.startsWith("/actual/");
+  }
+
+  if (itemPath === "/actual-vs-budget") {
+    return currentPath === "/actual-vs-budget" || currentPath.startsWith("/budget-vs-actual");
+  }
+
+  if (itemPath === "/invoice-master") {
+    return currentPath.startsWith("/invoice-master");
+  }
+
+  return currentPath === itemPath;
+};
+
 const navItems: NavItem[] = [
   {
-    title: "Budget ",
+    title: "Budget",
     path: "/budget",
     icon: Wallet,
   },
@@ -159,7 +210,7 @@ export function Sidebar({ isOpen, setIsOpen, isMobile }: SidebarProps) {
         <div className="flex-1 overflow-y-auto overflow-x-hidden py-4">
           <nav className="flex flex-col gap-1 px-3">
             {filteredNavItems.map((item) => (
-              <NavItem
+              <NavItemComponent
                 key={item.title}
                 item={item}
                 isOpen={isOpen || isMobile}
@@ -185,7 +236,7 @@ export function Sidebar({ isOpen, setIsOpen, isMobile }: SidebarProps) {
   )
 }
 
-function NavItem({
+function NavItemComponent({
   item,
   isOpen,
   isExpanded,
@@ -197,15 +248,18 @@ function NavItem({
   toggleExpand: () => void
 }) {
   const Icon = item.icon
+  const location = useLocation()
+  const isActive = isItemActive(item.path, location.pathname)
 
   if (item.children) {
+    const hasActiveChild = item.children.some(child => isItemActive(child.path, location.pathname))
     return (
       <div className="flex flex-col gap-1">
         <button
           onClick={toggleExpand}
           className={cn(
             "flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted/50 hover:text-foreground",
-            isExpanded ? "bg-muted/50 text-foreground" : "text-muted-foreground"
+            isExpanded || hasActiveChild ? "bg-muted/50 text-foreground" : "text-muted-foreground"
           )}
         >
           <div className="flex items-center gap-3">
@@ -227,22 +281,23 @@ function NavItem({
               className="overflow-hidden"
             >
               <div className="ml-9 flex flex-col gap-1 border-l pl-3 pt-1">
-                {item.children.map((child) => (
-                  <NavLink
-                    key={child.path}
-                    to={child.path || "#"}
-                    className={({ isActive }) =>
-                      cn(
+                {item.children.map((child) => {
+                  const isChildActive = isItemActive(child.path, location.pathname)
+                  return (
+                    <Link
+                      key={child.path}
+                      to={child.path || "#"}
+                      className={cn(
                         "flex items-center gap-2 rounded-md px-3 py-2 text-sm font-medium transition-colors hover:text-foreground",
-                        isActive
+                        isChildActive
                           ? "bg-primary/10 text-primary"
                           : "text-muted-foreground hover:bg-muted/50"
-                      )
-                    }
-                  >
-                    <span className="truncate">{child.title}</span>
-                  </NavLink>
-                ))}
+                      )}
+                    >
+                      <span className="truncate">{child.title}</span>
+                    </Link>
+                  )
+                })}
               </div>
             </motion.div>
           )}
@@ -252,19 +307,17 @@ function NavItem({
   }
 
   return (
-    <NavLink
+    <Link
       to={item.path || "#"}
-      className={({ isActive }) =>
-        cn(
-          "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted/50 hover:text-foreground",
-          isActive
-            ? "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground"
-            : "text-muted-foreground"
-        )
-      }
+      className={cn(
+        "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors hover:bg-muted/50 hover:text-foreground",
+        isActive
+          ? "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground font-semibold shadow-sm"
+          : "text-muted-foreground"
+      )}
     >
       {Icon && <Icon className="h-5 w-5 shrink-0" />}
       {isOpen && <span className="whitespace-nowrap">{item.title}</span>}
-    </NavLink>
+    </Link>
   )
 }

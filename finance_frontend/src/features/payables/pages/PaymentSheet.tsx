@@ -33,6 +33,7 @@ type ImprestRecord = {
 
 type PaymentEntry = {
   id: string
+  date: string
   employeeName: string
   employeeCode: string
   beneficiaryAccountNo: string
@@ -45,8 +46,11 @@ type PaymentEntry = {
 
 export default function PaymentSheet() {
   const currentDate = new Date()
-  const [month, setMonth] = useState(currentDate.getMonth() + 1)
-  const [year, setYear] = useState(currentDate.getFullYear())
+  const [month, setMonth] = React.useState(currentDate.getMonth() + 1)
+  const [year, setYear] = React.useState(currentDate.getFullYear())
+  const [selectedDate, setSelectedDate] = React.useState('')
+  const [fromDate, setFromDate] = React.useState('')
+  const [toDate, setToDate] = React.useState('')
   const [ceoApproved, setCeoApproved] = React.useState(true)
   const [showPrintMenu, setShowPrintMenu] = React.useState(false)
   const [data, setData] = useState<PaymentEntry[]>([])
@@ -60,23 +64,38 @@ export default function PaymentSheet() {
         const res = await apiClient.get('/imprests?status=Final%20Approved');
         const records: ImprestRecord[] = res.data;
         
-        // Filter records by selected month and year
+        // Filter records by Date Range, Single Date, or Month & Year
         const filteredRecords = records.filter(record => {
           if (!record.date) return false;
+          const recDateStr = record.date.split('T')[0];
+          
+          if (fromDate && toDate) {
+            return recDateStr >= fromDate && recDateStr <= toDate;
+          } else if (fromDate) {
+            return recDateStr >= fromDate;
+          } else if (toDate) {
+            return recDateStr <= toDate;
+          } else if (selectedDate) {
+            return recDateStr === selectedDate;
+          }
+          
           const recordDate = new Date(record.date);
           return recordDate.getMonth() + 1 === month && recordDate.getFullYear() === year;
         });
 
-        // Group by user_id
+        // Group by Date and user_id
         const map = new Map<string, PaymentEntry>();
 
         filteredRecords.forEach(record => {
           const userId = String(record.user_id);
+          const recDate = record.date ? record.date.split('T')[0] : '';
+          const key = `${recDate}_${userId}`;
           const amt = Number(record.pass_amount) || Number(record.amount) || 0;
 
-          if (!map.has(userId)) {
-            map.set(userId, {
-              id: userId,
+          if (!map.has(key)) {
+            map.set(key, {
+              id: key,
+              date: recDate,
               employeeName: `Employee ${userId}`,
               employeeCode: `EMP${userId}`,
               beneficiaryAccountNo: `000100000${userId.padStart(3, '0')}`,
@@ -84,11 +103,11 @@ export default function PaymentSheet() {
               beneficiaryName: `Employee ${userId}`,
               amount: 0,
               remarksClient: "Imprest Payment",
-              remarksBeneficiary: "Monthly Requisition"
+              remarksBeneficiary: record.head || "Daily Requisition"
             });
           }
 
-          const entry = map.get(userId)!;
+          const entry = map.get(key)!;
           entry.amount += amt;
         });
 
@@ -101,10 +120,15 @@ export default function PaymentSheet() {
     };
 
     fetchImprests();
-  }, [month, year]);
+  }, [month, year, selectedDate, fromDate, toDate]);
 
   const columns = useMemo<ColumnDef<PaymentEntry>[]>(
     () => [
+      {
+        accessorKey: "date",
+        header: ({ column }) => <SortableHeader column={column} title="Date" />,
+        cell: ({ row }) => <div className="whitespace-nowrap font-medium text-xs text-zinc-600">{row.getValue("date")}</div>,
+      },
       {
         accessorKey: "employeeName",
         header: ({ column }) => <SortableHeader column={column} title="Employee Name" />,
@@ -163,6 +187,8 @@ export default function PaymentSheet() {
     []
   )
 
+  const fileSuffix = fromDate && toDate ? `${fromDate}_to_${toDate}` : fromDate ? `from_${fromDate}` : toDate ? `to_${toDate}` : selectedDate ? selectedDate : `${year}-${String(month).padStart(2, '0')}`;
+
   const downloadPDF = () => {
     setShowPrintMenu(false);
     if (!data.length) return;
@@ -170,10 +196,11 @@ export default function PaymentSheet() {
     const element = document.createElement('div');
     element.innerHTML = `
       <div style="padding: 20px; font-family: sans-serif;">
-        <h2 style="text-align: center;">Imprest Payment Sheet - ${month}/${year}</h2>
+        <h2 style="text-align: center;">Imprest Payment Sheet - ${fileSuffix}</h2>
         <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
           <thead>
             <tr>
+              <th style="border: 1px solid #ccc; padding: 8px;">Date</th>
               <th style="border: 1px solid #ccc; padding: 8px;">Emp Name</th>
               <th style="border: 1px solid #ccc; padding: 8px;">Account No</th>
               <th style="border: 1px solid #ccc; padding: 8px;">IFSC Code</th>
@@ -185,6 +212,7 @@ export default function PaymentSheet() {
           <tbody>
             ${data.map(d => `
               <tr>
+                <td style="border: 1px solid #ccc; padding: 8px;">${d.date || ''}</td>
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.employeeName}</td>
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.beneficiaryAccountNo}</td>
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.ifscCode}</td>
@@ -200,7 +228,7 @@ export default function PaymentSheet() {
     
     html2pdf().set({
       margin: 10,
-      filename: `Imprest_Payment_${month}_${year}.pdf`,
+      filename: `Imprest_Payment_${fileSuffix}.pdf`,
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2 },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
@@ -211,16 +239,16 @@ export default function PaymentSheet() {
     setShowPrintMenu(false);
     if (!data.length) return;
     
-    const headers = ['Employee Name', 'Employee Code', 'Account Number', 'IFSC Code', 'Beneficiary Name', 'Amount', 'Remarks'];
+    const headers = ['Date', 'Employee Name', 'Employee Code', 'Account Number', 'IFSC Code', 'Beneficiary Name', 'Amount', 'Remarks'];
     const csvContent = [
       headers.join(','),
-      ...data.map(d => `"${d.employeeName}","${d.employeeCode}","=""${d.beneficiaryAccountNo}"""\,"${d.ifscCode}","${d.beneficiaryName}","${d.amount}","${d.remarksBeneficiary}"`)
+      ...data.map(d => `"${d.date || ''}","${d.employeeName}","${d.employeeCode}","=""${d.beneficiaryAccountNo}"""\,"${d.ifscCode}","${d.beneficiaryName}","${d.amount}","${d.remarksBeneficiary}"`)
     ].join('\n');
     
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `Imprest_Payment_${month}_${year}.csv`;
+    link.download = `Imprest_Payment_${fileSuffix}.csv`;
     link.click();
   };
 
@@ -228,12 +256,12 @@ export default function PaymentSheet() {
     setShowPrintMenu(false);
     if (!data.length) return;
     
-    const txtContent = data.map(d => `${d.beneficiaryAccountNo}|${d.ifscCode}|${d.amount}|${d.employeeName}|${d.remarksBeneficiary}`).join('\n');
+    const txtContent = data.map(d => `${d.date || ''}|${d.beneficiaryAccountNo}|${d.ifscCode}|${d.amount}|${d.employeeName}|${d.remarksBeneficiary}`).join('\n');
     
     const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
-    link.download = `Imprest_Payment_Bank_Upload_${month}_${year}.txt`;
+    link.download = `Imprest_Payment_Bank_Upload_${fileSuffix}.txt`;
     link.click();
   };
 
@@ -262,14 +290,38 @@ export default function PaymentSheet() {
             </div>
           </div>
           <p className="text-muted-foreground mt-1">
-            Batch #PS-{year}-{String(month).padStart(2, '0')} • Prepared for bank upload
+            Batch #PS-{fileSuffix} • Prepared for bank upload
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">From:</span>
+            <Input 
+              type="date"
+              value={fromDate}
+              onChange={(e) => { setFromDate(e.target.value); setSelectedDate(''); }}
+              className="w-[135px] text-xs h-10 bg-background border-input"
+            />
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">To:</span>
+            <Input 
+              type="date"
+              value={toDate}
+              onChange={(e) => { setToDate(e.target.value); setSelectedDate(''); }}
+              className="w-[135px] text-xs h-10 bg-background border-input"
+            />
+          </div>
+          {(fromDate || toDate || selectedDate) && (
+            <Button variant="ghost" size="sm" onClick={() => { setFromDate(''); setToDate(''); setSelectedDate(''); }} className="text-xs h-10 px-2">
+              Clear Dates
+            </Button>
+          )}
+          {/* Month and Year Selectors commented out as requested
           <select 
             value={month} 
-            onChange={(e) => setMonth(Number(e.target.value))}
-            className="flex h-10 w-[140px] items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            onChange={(e) => { setMonth(Number(e.target.value)); setFromDate(''); setToDate(''); setSelectedDate(''); }}
+            className="flex h-10 w-[120px] items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
               <option key={m} value={m}>{new Date(2000, m - 1).toLocaleString('default', { month: 'long' })}</option>
@@ -277,13 +329,14 @@ export default function PaymentSheet() {
           </select>
           <select 
             value={year} 
-            onChange={(e) => setYear(Number(e.target.value))}
-            className="flex h-10 w-[100px] items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            onChange={(e) => { setYear(Number(e.target.value)); setFromDate(''); setToDate(''); setSelectedDate(''); }}
+            className="flex h-10 w-[85px] items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {[currentDate.getFullYear() - 1, currentDate.getFullYear(), currentDate.getFullYear() + 1].map(y => (
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
+          */}
 
           <div className="relative ml-2">
             <Button variant="outline" onClick={togglePrintMenu}>

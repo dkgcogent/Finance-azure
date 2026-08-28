@@ -19,6 +19,7 @@ export interface InvoicePreviewTemplateProps {
   ourPAN?: string;
   ourState?: string;
   ourCompanyName?: string;
+  invoiceNumber?: string;      // Pre-generated invoice number e.g. "CLPL/25-26/042"
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -109,7 +110,7 @@ const BankDetails = () => (
 const RelianceInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: number; totalTax: number; grandTotal: number }> = ({
   customerName, projectName, invoiceLocation, invoiceType, startDate, endDate, invoiceDate,
   workOrderNo, serviceProviderCode, totalFreight, totalTax, grandTotal,
-  ourGSTIN, ourPAN, ourState, ourCompanyName, reportData
+  ourGSTIN, ourPAN, ourState, ourCompanyName, reportData, invoiceNumber
 }) => {
   const isInterState = invoiceLocation?.toLowerCase().includes('uttar') || invoiceLocation?.toLowerCase().includes('up');
   const igst = isInterState ? totalTax : 0;
@@ -148,7 +149,7 @@ const RelianceInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
               <span className="font-bold">GSTIN: {customerGSTIN} &nbsp;|&nbsp; PAN: {customerPAN}</span>
             </td>
             <td className="border-2 border-black p-2 align-top w-1/2 font-bold">
-              Tax Invoice No.: CLPL/25-26/—<br />
+              Tax Invoice No.: {invoiceNumber || 'CLPL/25-26/—'}<br />
               Tax Invoice Date: {formatDate(invoiceDate || endDate) || '—'}<br /><br />
               SAC Code + Category: 996819<br /><br />
               Place of supply of Service: {projectName || '—'} {invoiceLocation || ''}<br /><br />
@@ -249,7 +250,7 @@ const RelianceInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
 const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: number; totalTax: number; grandTotal: number }> = ({
   projectName, invoiceLocation, invoiceType, startDate, endDate, invoiceDate,
   costCode, totalFreight, totalTax, grandTotal,
-  ourGSTIN, ourPAN, ourState, ourCompanyName, reportData
+  ourGSTIN, ourPAN, ourState, ourCompanyName, reportData, invoiceNumber
 }) => {
   // Determine GST split based on state
   const isInterState = invoiceLocation?.toLowerCase().includes('uttar') || invoiceLocation?.toLowerCase().includes('up');
@@ -292,7 +293,7 @@ const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
         <tbody>
           <tr>
             <td className="border-2 border-black p-1 font-bold w-1/4">Invoice No.</td>
-            <td className="border-2 border-black p-1 w-1/4">: CLPL/25-26/—</td>
+            <td className="border-2 border-black p-1 w-1/4">: {invoiceNumber || 'CLPL/25-26/—'}</td>
             <td className="border-2 border-black p-1 font-bold w-1/4">Date</td>
             <td className="border-2 border-black p-1 w-1/4">: {formatDate(invoiceDate || endDate) || '—'}</td>
           </tr>
