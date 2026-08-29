@@ -70,12 +70,18 @@ export const getVendorTrips = async (req: Request, res: Response) => {
 
     // Fetch commercial rates
     const placementType = tripType === 'adhoc' ? 'Adhoc' : 'Fixed';
+    const stateFilter = (locationId && String(locationId).trim() && String(locationId) !== 'undefined' && String(locationId) !== 'null') 
+      ? String(locationId).trim() 
+      : null;
+
     const [commercialRows]: any = await pool.query(
       `SELECT * FROM vendor_commercial 
-       WHERE (vendor_name = ? OR vendor_id = ?) 
-       ORDER BY (CASE WHEN LOWER(type_of_vehicle_placement) = LOWER(?) THEN 0 ELSE 1 END), id DESC 
-       LIMIT 1`,
-      [actualVendorName, vendorName, placementType]
+       WHERE (vendor_name = ? OR vendor_id = ? OR (vendor_name IS NOT NULL AND vendor_name LIKE CONCAT('%', ?, '%'))) 
+       ORDER BY 
+         (CASE WHEN ? IS NOT NULL AND (LOWER(state) = LOWER(?) OR LOWER(state) LIKE CONCAT('%', LOWER(?), '%')) THEN 0 ELSE 1 END),
+         (CASE WHEN LOWER(type_of_vehicle_placement) = LOWER(?) THEN 0 ELSE 1 END), 
+         id DESC`,
+      [actualVendorName, vendorName, actualVendorName, stateFilter, stateFilter, stateFilter, placementType]
     );
     const commercialRates = commercialRows.length > 0 ? commercialRows[0] : null;
 
@@ -84,19 +90,64 @@ export const getVendorTrips = async (req: Request, res: Response) => {
 
     if (tripType === 'adhoc') {
       // Fetch all trips for this vendor in the date range
-      const [trips]: any = await pool.query(`
+      const [rawTrips]: any = await pool.query(`
         SELECT 
-          DATE_FORMAT(COALESCE(ServiceDate, TransactionDate), '%d/%m/%Y') as date,
-          Location, CustomerSite, CustSite, VendorName, VehicleNumber, VehicleType, VehicleOwnershipType, TripType, DriverType, 
-          COALESCE(ArrivalTimeAtHub, InTimeByCust, VehicleReportingAtHub, VehicleEntryInHub) as ArrivalTimeAtHub, 
-          COALESCE(OutTimeFromHub, VehicleOutFromHubFinal, ReturnReportingTime, OutTimeFrom, VehicleReturnAtHub, VehicleOutFromHubForDelivery) as OutTimeFromHub, 
-          OpeningKM, ClosingKM, ExtraKM, ExtraKMCost, VFreightFix, DCMCharges, TotalFreight 
-        FROM adhoc_transactions 
-        WHERE (VendorName = ? OR VendorID = ?) 
-        AND COALESCE(ServiceDate, TransactionDate) BETWEEN ? AND ?
-        AND (? IS NULL OR ? = '' OR CustomerID = ?)
-        AND (? IS NULL OR ? = '' OR ProjectID = ?)
-      `, [actualVendorName, vendorName, startDate, endDate, custIdVal, custIdVal, custIdVal, projIdVal, projIdVal, projIdVal]);
+          DATE_FORMAT(COALESCE(at.ServiceDate, at.TransactionDate), '%d/%m/%Y') as date,
+          at.Location, at.CustomerSite, at.CustSite, at.VendorName, at.VehicleNumber, at.VehicleType, at.VehicleOwnershipType, at.TripType, at.DriverType, 
+          COALESCE(at.ArrivalTimeAtHub, at.InTimeByCust, at.VehicleReportingAtHub, at.VehicleEntryInHub) as ArrivalTimeAtHub, 
+          COALESCE(at.OutTimeFromHub, at.VehicleOutFromHubFinal, at.ReturnReportingTime, at.OutTimeFrom, at.VehicleReturnAtHub, at.VehicleOutFromHubForDelivery) as OutTimeFromHub, 
+          at.OpeningKM, at.ClosingKM, at.ExtraKM, at.ExtraKMCost, at.VFreightFix, at.DCMCharges, at.TotalFreight,
+          vc.fixed_rate as vc_fixed_rate,
+          vc.additional_rate_per_km as vc_additional_rate_per_km,
+          vc.over_time_charges as vc_over_time_charges,
+          vc.state as vc_state
+        FROM adhoc_transactions at
+        LEFT JOIN project p ON p.ProjectID = at.ProjectID
+        LEFT JOIN vendor_commercial vc ON at.vendor_commercial_id = vc.id
+        WHERE (at.VendorName = ? OR at.VendorID = ? OR (at.VendorName IS NOT NULL AND at.VendorName LIKE CONCAT('%', ?, '%'))) 
+          AND DATE_FORMAT(COALESCE(at.ServiceDate, at.TransactionDate), '%Y-%m-%d') BETWEEN ? AND ?
+          AND (? IS NULL OR ? = '' OR at.CustomerID = ? OR (at.CompanyName IS NOT NULL AND at.CompanyName LIKE CONCAT('%', ?, '%')))
+          AND (? IS NULL OR ? = '' OR at.ProjectID = ? OR p.ProjectName IN (SELECT ProjectName FROM project WHERE ProjectID = ?))
+      `, [
+        actualVendorName, vendorName, actualVendorName,
+        startDate, endDate,
+        custIdVal, custIdVal, custIdVal, custIdVal,
+        projIdVal, projIdVal, projIdVal, projIdVal
+      ]);
+
+      const trips = rawTrips.filter((t: any) => {
+        if (!stateFilter) return true;
+        const filterLower = stateFilter.toLowerCase();
+
+        if (t.vc_state) {
+          return t.vc_state.toLowerCase().includes(filterLower);
+        }
+
+        const siteRaw = (t.CustomerSite || t.CustSite || t.Location || '').toLowerCase();
+        const upCities = ['noida', 'lucknow', 'ghaziabad', 'kanpur', 'agra', 'varanasi', 'meerut', 'greater noida'];
+        const dlCities = ['dwarka', 'delhi', 'janakpuri', 'okhla', 'rohini', 'mayapuri', 'azadpur', 'kapashera', 'narela'];
+        const hrCities = ['gurgaon', 'gurugram', 'faridabad', 'manesar', 'sonipat', 'panipat', 'karnal'];
+
+        if (filterLower.includes('delhi') || filterLower === 'dl') {
+          if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up')) return false;
+          if (hrCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('hr')) return false;
+          if (dlCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('dl') || siteRaw.includes('delhi')) return true;
+        }
+        
+        if (filterLower.includes('uttar pradesh') || filterLower === 'up') {
+          if (dlCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('dl')) return false;
+          if (hrCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('hr')) return false;
+          if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up') || siteRaw.includes('uttar pradesh') || siteRaw.includes('up')) return true;
+        }
+
+        if (filterLower.includes('haryana') || filterLower === 'hr') {
+          if (dlCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('dl')) return false;
+          if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up')) return false;
+          if (hrCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('hr') || siteRaw.includes('haryana')) return true;
+        }
+
+        return siteRaw.includes(filterLower) || (t.Location && t.Location.toLowerCase().includes(filterLower));
+      });
 
       // Calculate Annexure Data
       const selectedStateAdhoc = (locationId && String(locationId).trim() && String(locationId) !== 'undefined' && String(locationId) !== 'null') 
@@ -149,11 +200,21 @@ export const getVendorTrips = async (req: Request, res: Response) => {
         const dist = (parseFloat(t.ClosingKM) || 0) - (parseFloat(t.OpeningKM) || 0);
         const tripExtraKm = Math.max(0, dist - 100);
 
+        const vehComm = commercialRows.find((c: any) => {
+          const stateMatches = !stateFilter || !c.state || c.state.toLowerCase().includes(stateFilter.toLowerCase());
+          const vehMatches = !t.VehicleType || !c.type_of_vehicle || c.type_of_vehicle.toLowerCase() === t.VehicleType.toLowerCase();
+          return stateMatches && vehMatches;
+        }) || commercialRows.find((c: any) => {
+          return !stateFilter || !c.state || c.state.toLowerCase().includes(stateFilter.toLowerCase());
+        }) || commercialRows.find((c: any) => {
+          return !t.VehicleType || !c.type_of_vehicle || c.type_of_vehicle.toLowerCase() === t.VehicleType.toLowerCase();
+        }) || commercialRates;
+
         if (!misGroups[loc]) {
-          const rawFixed = commercialRates?.fixed_rate ? parseFloat(commercialRates.fixed_rate) : (t.VFreightFix ? parseFloat(t.VFreightFix) : 0);
+          const rawFixed = vehComm?.fixed_rate ? parseFloat(vehComm.fixed_rate) : (t.VFreightFix ? parseFloat(t.VFreightFix) : 0);
           const fixedRateVal = isNaN(rawFixed) ? 0 : rawFixed;
 
-          const rawAddRate = commercialRates?.additional_rate_per_km ? parseFloat(commercialRates.additional_rate_per_km) : (t.ExtraKMCost && t.ExtraKM && parseFloat(t.ExtraKM) > 0 ? parseFloat(t.ExtraKMCost) / parseFloat(t.ExtraKM) : 0);
+          const rawAddRate = vehComm?.additional_rate_per_km ? parseFloat(vehComm.additional_rate_per_km) : (t.ExtraKMCost && t.ExtraKM && parseFloat(t.ExtraKM) > 0 ? parseFloat(t.ExtraKMCost) / parseFloat(t.ExtraKM) : 0);
           const addKmRateVal = isNaN(rawAddRate) ? 0 : rawAddRate;
 
           misGroups[loc] = {
@@ -162,7 +223,7 @@ export const getVendorTrips = async (req: Request, res: Response) => {
             rates: fixedRateVal,
             extraKm: 0,
             extraKmRate: addKmRateVal,
-            extraHrsRate: commercialRates?.over_time_charges ? parseFloat(commercialRates.over_time_charges) : 63,
+            extraHrsRate: vehComm?.over_time_charges ? parseFloat(vehComm.over_time_charges) : 63,
             fixedCost: 0,
             extraKmCost: 0,
             dcmCharges: 0,
@@ -201,21 +262,69 @@ export const getVendorTrips = async (req: Request, res: Response) => {
       });
     } else if (tripType === 'fixed') {
       // Fetch all trips for this vendor in the date range
-      const [trips]: any = await pool.query(`
+      const [rawTrips]: any = await pool.query(`
         SELECT 
-          DATE_FORMAT(COALESCE(ServiceDate, TransactionDate), '%d/%m/%Y') as date,
-          Location, CustomerSite, VendorName, VehicleNumber, VehicleType, TripType, 
+          DATE_FORMAT(COALESCE(ft.ServiceDate, ft.TransactionDate), '%d/%m/%Y') as date,
+          ft.Location, ft.CustomerSite, ft.VendorName, ft.VehicleNumber, ft.VehicleType, ft.TripType, 
           'Driver' as DriverType,
-          COALESCE(ArrivalTimeAtHub, InTimeByCust, VehicleEntryInHub, VehicleReportingAtHub) as ArrivalTimeAtHub, 
-          COALESCE(OutTimeFromHub, VehicleReturnAtHub, ReturnReportingTime, OutTimeFrom) as OutTimeFromHub, 
-          TotalDutyHours,
-          OpeningKM, ClosingKM, VFreightFix, TotalFreight, TollExpenses, ParkingCharges
-        FROM fixed_transactions 
-        WHERE (VendorName = ? OR VendorID = ?) 
-        AND COALESCE(ServiceDate, TransactionDate) BETWEEN ? AND ?
-        AND (? IS NULL OR ? = '' OR CustomerID = ?)
-        AND (? IS NULL OR ? = '' OR ProjectID = ?)
-      `, [actualVendorName, vendorName, startDate, endDate, custIdVal, custIdVal, custIdVal, projIdVal, projIdVal, projIdVal]);
+          COALESCE(ft.ArrivalTimeAtHub, ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub) as ArrivalTimeAtHub, 
+          COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub, ReturnReportingTime, ft.OutTimeFrom) as OutTimeFromHub, 
+          ft.TotalDutyHours,
+          ft.OpeningKM, ft.ClosingKM, ft.VFreightFix, ft.TotalFreight, ft.TollExpenses, ft.ParkingCharges,
+          vc.fixed_rate as vc_fixed_rate,
+          vc.additional_rate_per_km as vc_additional_rate_per_km,
+          vc.km_include_in_fix_rate as vc_km_include,
+          vc.no_of_days_per_month as vc_no_of_days_per_month,
+          vc.hours as vc_hours,
+          vc.over_time_charges as vc_over_time_charges,
+          vc.state as vc_state
+        FROM fixed_transactions ft
+        LEFT JOIN project p ON p.ProjectID = ft.ProjectID
+        LEFT JOIN vendor_commercial vc ON ft.vendor_commercial_id = vc.id
+        WHERE (ft.VendorName = ? OR ft.VendorID = ? OR (ft.VendorName IS NOT NULL AND ft.VendorName LIKE CONCAT('%', ?, '%'))) 
+          AND DATE_FORMAT(COALESCE(ft.ServiceDate, ft.TransactionDate), '%Y-%m-%d') BETWEEN ? AND ?
+          AND (? IS NULL OR ? = '' OR ft.CustomerID = ? OR (ft.CompanyName IS NOT NULL AND ft.CompanyName LIKE CONCAT('%', ?, '%')))
+          AND (? IS NULL OR ? = '' OR ft.ProjectID = ? OR p.ProjectName IN (SELECT ProjectName FROM project WHERE ProjectID = ?))
+      `, [
+        actualVendorName, vendorName, actualVendorName,
+        startDate, endDate,
+        custIdVal, custIdVal, custIdVal, custIdVal,
+        projIdVal, projIdVal, projIdVal, projIdVal
+      ]);
+
+      const trips = rawTrips.filter((t: any) => {
+        if (!stateFilter) return true;
+        const filterLower = stateFilter.toLowerCase();
+
+        if (t.vc_state) {
+          return t.vc_state.toLowerCase().includes(filterLower);
+        }
+
+        const siteRaw = (t.CustomerSite || t.Location || '').toLowerCase();
+        const upCities = ['noida', 'lucknow', 'ghaziabad', 'kanpur', 'agra', 'varanasi', 'meerut', 'greater noida'];
+        const dlCities = ['dwarka', 'delhi', 'janakpuri', 'okhla', 'rohini', 'mayapuri', 'azadpur', 'kapashera', 'narela'];
+        const hrCities = ['gurgaon', 'gurugram', 'faridabad', 'manesar', 'sonipat', 'panipat', 'karnal'];
+
+        if (filterLower.includes('delhi') || filterLower === 'dl') {
+          if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up')) return false;
+          if (hrCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('hr')) return false;
+          if (dlCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('dl') || siteRaw.includes('delhi')) return true;
+        }
+        
+        if (filterLower.includes('uttar pradesh') || filterLower === 'up') {
+          if (dlCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('dl')) return false;
+          if (hrCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('hr')) return false;
+          if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up') || siteRaw.includes('uttar pradesh') || siteRaw.includes('up')) return true;
+        }
+
+        if (filterLower.includes('haryana') || filterLower === 'hr') {
+          if (dlCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('dl')) return false;
+          if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up')) return false;
+          if (hrCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('hr') || siteRaw.includes('haryana')) return true;
+        }
+
+        return siteRaw.includes(filterLower) || (t.Location && t.Location.toLowerCase().includes(filterLower));
+      });
 
       // Calculate Annexure Data (Detailed Logs)
       const selectedState = (locationId && String(locationId).trim() && String(locationId) !== 'undefined' && String(locationId) !== 'null') 
@@ -253,10 +362,20 @@ export const getVendorTrips = async (req: Request, res: Response) => {
       trips.forEach((t: any) => {
         const veh = t.VehicleNumber || 'Unknown';
         if (!misGroups[veh]) {
-          const agRate = commercialRates?.fixed_rate ? parseFloat(commercialRates.fixed_rate) : 34650;
-          const fixedKms = commercialRates?.km_include_in_fix_rate ? parseFloat(commercialRates.km_include_in_fix_rate) : 1000;
-          const workDays = commercialRates?.no_of_days_per_month ? parseFloat(commercialRates.no_of_days_per_month) : 30;
-          const extKmRate = commercialRates?.additional_rate_per_km ? parseFloat(commercialRates.additional_rate_per_km) : 7.25;
+          const vehComm = commercialRows.find((c: any) => {
+            const stateMatches = !stateFilter || !c.state || c.state.toLowerCase().includes(stateFilter.toLowerCase());
+            const vehMatches = !t.VehicleType || !c.type_of_vehicle || c.type_of_vehicle.toLowerCase() === t.VehicleType.toLowerCase();
+            return stateMatches && vehMatches;
+          }) || commercialRows.find((c: any) => {
+            return !stateFilter || !c.state || c.state.toLowerCase().includes(stateFilter.toLowerCase());
+          }) || commercialRows.find((c: any) => {
+            return !t.VehicleType || !c.type_of_vehicle || c.type_of_vehicle.toLowerCase() === t.VehicleType.toLowerCase();
+          }) || commercialRates;
+
+          const agRate = vehComm?.fixed_rate ? parseFloat(vehComm.fixed_rate) : 34650;
+          const fixedKms = vehComm?.km_include_in_fix_rate ? parseFloat(vehComm.km_include_in_fix_rate) : 1000;
+          const workDays = vehComm?.no_of_days_per_month ? parseFloat(vehComm.no_of_days_per_month) : 30;
+          const extKmRate = vehComm?.additional_rate_per_km ? parseFloat(vehComm.additional_rate_per_km) : 7.25;
           const dynFuel = 0.50;
 
           const rawHubFixed = t.CustomerSite || t.Location || '';
@@ -268,7 +387,7 @@ export const getVendorTrips = async (req: Request, res: Response) => {
             mode: 'UP Large LM',
             loc: cleanHubFixed || t.Location || '',
             vertical: 'LM',
-            hrs: commercialRates?.hours ? parseFloat(commercialRates.hours) : 12,
+            hrs: vehComm?.hours ? parseFloat(vehComm.hours) : 12,
             fixedKms: fixedKms,
             agRate: agRate,
             dieselHike: 0,
@@ -276,7 +395,7 @@ export const getVendorTrips = async (req: Request, res: Response) => {
             workDays: workDays,
             actualDays: 0,
             totKms: 0,
-            extHrAmt: commercialRates?.over_time_charges ? parseFloat(commercialRates.over_time_charges) : 60,
+            extHrAmt: vehComm?.over_time_charges ? parseFloat(vehComm.over_time_charges) : 60,
             extHr: 0,
             extHrRate: 0,
             extKmRate: extKmRate,

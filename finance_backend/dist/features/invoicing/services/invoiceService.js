@@ -218,7 +218,7 @@ exports.invoiceService = {
         return rows;
     },
     getLocations: async () => {
-        const [ccRows] = await database_1.db.query("SELECT DISTINCT state as name, company_name FROM customer_commercial WHERE state IS NOT NULL AND state != ''");
+        const [ccRows] = await database_1.db.query("SELECT DISTINCT state as name, customer_id, company_name FROM customer_commercial WHERE state IS NOT NULL AND state != ''");
         const [projRows] = await database_1.db.query("SELECT DISTINCT State as name, CustomerID as customerId FROM project WHERE State IS NOT NULL AND State != ''");
         const locationList = [];
         const seen = new Set();
@@ -229,7 +229,7 @@ exports.invoiceService = {
             return match ? parseInt(match[1]) : null;
         };
         ccRows.forEach((r) => {
-            const custId = extractCustomerId(r.company_name);
+            const custId = r.customer_id || extractCustomerId(r.company_name);
             const stateParts = (r.name || '').split(',').map((s) => s.trim()).filter(Boolean);
             stateParts.forEach((st) => {
                 const key = `${custId || 'all'}___${st}`;
@@ -471,6 +471,7 @@ exports.invoiceService = {
           cc.description_only_sbs as cc_vertical,
           cc.toll as cc_toll,
           cc.parking as cc_parking,
+          cc.state as cc_state,
           vc.fixed_rate as vc_fixed_rate
         FROM fixed_transactions ft
         LEFT JOIN vehicle v ON v.VehicleID = JSON_UNQUOTE(JSON_EXTRACT(ft.VehicleIDs, '$[0]'))
@@ -484,14 +485,11 @@ exports.invoiceService = {
           AND (? IS NULL OR ft.ProjectID = ? OR p.ProjectName IN (
             SELECT ProjectName FROM project WHERE ProjectID = ?
           ))
-          AND (? IS NULL OR ? = '' OR ? = 'Select a state...' OR cc.state LIKE ? OR p.State LIKE ? OR ft.Location LIKE ?)
           AND DATE_FORMAT(COALESCE(ft.ServiceDate, ft.TransactionDate), '%Y-%m-%d') BETWEEN ? AND ?
       `;
-            const stateLike = locationId ? `%${locationId}%` : '%';
             params = [
                 customerId || null, customerId || null, coreCustomerName || 'NON_MATCHING_DUMMY', customerId || null,
                 projectId || null, projectId || null, projectId || null,
-                locationId || null, locationId || '', locationId || '', stateLike, stateLike, stateLike,
                 startDate, endDate
             ];
         }
@@ -543,6 +541,7 @@ exports.invoiceService = {
           COALESCE(at.CustSite, at.CustomerSite) as ourBranch,
           cc.fixed_rate as cc_fixed_rate,
           cc.additional_rate_per_km as cc_additional_rate_per_km,
+          cc.state as cc_state,
           vc.fixed_rate as vc_fixed_rate
         FROM adhoc_transactions at
         LEFT JOIN project p ON p.ProjectID = at.ProjectID
@@ -555,21 +554,59 @@ exports.invoiceService = {
           AND (? IS NULL OR at.ProjectID = ? OR p.ProjectName IN (
             SELECT ProjectName FROM project WHERE ProjectID = ?
           ))
-          AND (? IS NULL OR ? = '' OR ? = 'Select a state...' OR cc.state LIKE ? OR p.State LIKE ? OR at.Location LIKE ?)
           AND DATE_FORMAT(COALESCE(at.ServiceDate, at.TransactionDate), '%Y-%m-%d') BETWEEN ? AND ?
       `;
-            const stateLike = locationId ? `%${locationId}%` : '%';
             params = [
                 customerId || null, customerId || null, coreCustomerName || 'NON_MATCHING_DUMMY', customerId || null,
                 projectId || null, projectId || null, projectId || null,
-                locationId || null, locationId || '', locationId || '', stateLike, stateLike, stateLike,
                 startDate, endDate
             ];
         }
         console.log('[generateReports] tripType:', tripType);
         console.log('[generateReports] params:', params);
-        const [misRows] = await database_1.db.query(query, params);
-        console.log('[generateReports] misRows count:', misRows.length);
+        const [rawMisRows] = await database_1.db.query(query, params);
+        console.log('[generateReports] rawMisRows count:', rawMisRows.length);
+        const stateFilter = (locationId && String(locationId).trim() && String(locationId) !== 'Select a state...' && String(locationId) !== 'undefined' && String(locationId) !== 'null')
+            ? String(locationId).trim()
+            : null;
+        // Filter misRows strictly by selected state & city mapping
+        const misRows = rawMisRows.filter((row) => {
+            if (!stateFilter)
+                return true;
+            const filterLower = stateFilter.toLowerCase();
+            const siteRaw = (row.ourBranch || row.consignorName || row.CustomerSite || row.CustSite || '').toLowerCase();
+            const upCities = ['noida', 'lucknow', 'ghaziabad', 'kanpur', 'agra', 'varanasi', 'meerut', 'greater noida'];
+            const dlCities = ['dwarka', 'delhi', 'janakpuri', 'okhla', 'rohini', 'mayapuri', 'azadpur', 'kapashera', 'narela'];
+            const hrCities = ['gurgaon', 'gurugram', 'faridabad', 'manesar', 'sonipat', 'panipat', 'karnal'];
+            if (filterLower.includes('delhi') || filterLower === 'dl') {
+                if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up'))
+                    return false;
+                if (hrCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('hr'))
+                    return false;
+                if (dlCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('dl'))
+                    return true;
+            }
+            if (filterLower.includes('uttar pradesh') || filterLower === 'up') {
+                if (dlCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('dl'))
+                    return false;
+                if (hrCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('hr'))
+                    return false;
+                if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up'))
+                    return true;
+            }
+            if (filterLower.includes('haryana') || filterLower === 'hr') {
+                if (dlCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('dl'))
+                    return false;
+                if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up'))
+                    return false;
+                if (hrCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('hr'))
+                    return true;
+            }
+            if (row.cc_state) {
+                return row.cc_state.toLowerCase().includes(filterLower);
+            }
+            return siteRaw.includes(filterLower) || (row.ourState && row.ourState.toLowerCase().includes(filterLower));
+        });
         // Generate Annexure from MIS
         const annexureMap = new Map();
         misRows.forEach((row) => {
@@ -616,26 +653,55 @@ exports.invoiceService = {
         let flipkartAnnexureData = [];
         let flipkartAdhocAnnexureData = [];
         if (misRows.length > 0) {
+            const stateFilter = (locationId && String(locationId).trim() && String(locationId) !== 'Select a state...' && String(locationId) !== 'undefined' && String(locationId) !== 'null')
+                ? String(locationId).trim()
+                : null;
             if (tripType === 'Fixed') {
                 const flipkartMap = new Map();
                 const workingDaysInMonth = new Date(new Date(startDate).getFullYear(), new Date(startDate).getMonth() + 1, 0).getDate();
-                // Fetch commercial for exact customer and project
-                const [commercialRows] = await database_1.db.query("SELECT * FROM customer_commercial WHERE (customer_id = ? OR ? IS NULL) AND (project_id = ? OR ? IS NULL) AND type_of_vehicle_placement = 'Fixed'", [customerId, customerId, projectId, projectId]);
+                // Fetch commercial for exact customer and project, ordered so matching state comes first
+                const [commercialRows] = await database_1.db.query(`SELECT * FROM customer_commercial 
+           WHERE (customer_id = ? OR ? IS NULL) 
+             AND (project_id = ? OR ? IS NULL) 
+             AND type_of_vehicle_placement = 'Fixed'
+           ORDER BY 
+             (CASE WHEN ? IS NOT NULL AND (LOWER(state) = LOWER(?) OR LOWER(state) LIKE CONCAT('%', LOWER(?), '%')) THEN 0 ELSE 1 END),
+             id DESC`, [customerId, customerId, projectId, projectId, stateFilter, stateFilter, stateFilter]);
                 misRows.forEach((row) => {
                     const veh = row.vehicle || 'Unknown Vehicle';
-                    // Find specific commercial for this vehicle type, or fallback to row's joined cc values, or first match
-                    const comm = commercialRows.find((c) => c.type_of_vehicle === row.vehicleType) || commercialRows[0] || {};
-                    const extraKmRate = Number(row.cc_additional_rate_per_km || comm.additional_rate_per_km || 0);
-                    const extraHourRate = Number(row.cc_over_time_charges || comm.over_time_charges || 0);
-                    const fixedKms = Number(row.cc_km_include || comm.km_include_in_fix_rate || 0);
-                    const fixedRate = Number(row.cc_fixed_rate || comm.fixed_rate || 0);
-                    const workingDaysToBeDone = Number(row.cc_no_of_days_per_month || comm.no_of_days_per_month || workingDaysInMonth);
-                    const hours = Number(row.cc_hours || comm.hours || 0);
+                    // Find specific commercial matching both state and vehicle type, or matching state, or matching vehicle type, or first available
+                    const comm = commercialRows.find((c) => {
+                        const stateMatches = !stateFilter || !c.state || c.state.toLowerCase().includes(stateFilter.toLowerCase());
+                        const vehMatches = !row.vehicleType || !c.type_of_vehicle || c.type_of_vehicle.toLowerCase() === row.vehicleType.toLowerCase();
+                        return stateMatches && vehMatches;
+                    }) || commercialRows.find((c) => {
+                        return !stateFilter || !c.state || c.state.toLowerCase().includes(stateFilter.toLowerCase());
+                    }) || commercialRows.find((c) => {
+                        return !row.vehicleType || !c.type_of_vehicle || c.type_of_vehicle.toLowerCase() === row.vehicleType.toLowerCase();
+                    }) || commercialRows[0] || {};
+                    const extraKmRate = comm.additional_rate_per_km !== undefined && comm.additional_rate_per_km !== null
+                        ? Number(comm.additional_rate_per_km)
+                        : Number(row.cc_additional_rate_per_km || 0);
+                    const extraHourRate = comm.over_time_charges !== undefined && comm.over_time_charges !== null
+                        ? Number(comm.over_time_charges)
+                        : Number(row.cc_over_time_charges || 0);
+                    const fixedKms = comm.km_include_in_fix_rate !== undefined && comm.km_include_in_fix_rate !== null
+                        ? Number(comm.km_include_in_fix_rate)
+                        : Number(row.cc_km_include || 0);
+                    const fixedRate = comm.fixed_rate !== undefined && comm.fixed_rate !== null
+                        ? Number(comm.fixed_rate)
+                        : Number(row.cc_fixed_rate || 0);
+                    const workingDaysToBeDone = comm.no_of_days_per_month !== undefined && comm.no_of_days_per_month !== null
+                        ? Number(comm.no_of_days_per_month)
+                        : Number(row.cc_no_of_days_per_month || workingDaysInMonth);
+                    const hours = comm.hours !== undefined && comm.hours !== null
+                        ? Number(comm.hours)
+                        : Number(row.cc_hours || 0);
                     const dieselHike = 0;
                     const totalChargesWithDieselHike = fixedRate + dieselHike;
                     const vehicleTypeStr = comm.type_of_vehicle || row.vehicleType || '';
                     const mode = row.projectName || (comm.project ? comm.project.split(' / ')[0] : '') || comm.type_of_vehicle_placement || '';
-                    const vertical = row.cc_vertical || comm.description_only_sbs || 'LM';
+                    const vertical = comm.description_only_sbs || row.cc_vertical || 'LM';
                     if (!flipkartMap.has(veh)) {
                         flipkartMap.set(veh, {
                             sNo: flipkartMap.size + 1,
@@ -662,7 +728,7 @@ exports.invoiceService = {
                             perDayCost: 0,
                             tWorkingDaysAmount: 0,
                             tollCharges: 0,
-                            commTollParking: Number(row.cc_toll || comm.toll || 0) + Number(row.cc_parking || comm.parking || 0),
+                            commTollParking: Number(comm.toll || row.cc_toll || 0) + Number(comm.parking || row.cc_parking || 0),
                             amount: 0
                         });
                     }
@@ -699,11 +765,29 @@ exports.invoiceService = {
             }
             else if (tripType === 'Adhoc') {
                 const adhocMap = new Map();
-                const [commercialRows] = await database_1.db.query("SELECT * FROM customer_commercial WHERE (customer_id = ? OR customer_id IS NULL OR ? IS NULL) AND (project_id = ? OR project_id IS NULL OR ? IS NULL)", [customerId, customerId, projectId, projectId]);
+                const [commercialRows] = await database_1.db.query(`SELECT * FROM customer_commercial 
+           WHERE (customer_id = ? OR customer_id IS NULL OR ? IS NULL) 
+             AND (project_id = ? OR project_id IS NULL OR ? IS NULL)
+           ORDER BY 
+             (CASE WHEN ? IS NOT NULL AND (LOWER(state) = LOWER(?) OR LOWER(state) LIKE CONCAT('%', LOWER(?), '%')) THEN 0 ELSE 1 END),
+             (CASE WHEN LOWER(type_of_vehicle_placement) = 'adhoc' THEN 0 ELSE 1 END),
+             id DESC`, [customerId, customerId, projectId, projectId, stateFilter, stateFilter, stateFilter]);
                 misRows.forEach((row) => {
-                    const comm = commercialRows.find((c) => c.type_of_vehicle === row.vehicleType) || commercialRows[0] || {};
-                    const extraKmRate = Number(row.cc_additional_rate_per_km || comm.additional_rate_per_km || row.FreightVariable || 0);
-                    const fixRate = Number(row.cc_fixed_rate || comm.fixed_rate || row.FreightFix || 0);
+                    const comm = commercialRows.find((c) => {
+                        const stateMatches = !stateFilter || !c.state || c.state.toLowerCase().includes(stateFilter.toLowerCase());
+                        const vehMatches = !row.vehicleType || !c.type_of_vehicle || c.type_of_vehicle.toLowerCase() === row.vehicleType.toLowerCase();
+                        return stateMatches && vehMatches;
+                    }) || commercialRows.find((c) => {
+                        return !stateFilter || !c.state || c.state.toLowerCase().includes(stateFilter.toLowerCase());
+                    }) || commercialRows.find((c) => {
+                        return !row.vehicleType || !c.type_of_vehicle || c.type_of_vehicle.toLowerCase() === row.vehicleType.toLowerCase();
+                    }) || commercialRows[0] || {};
+                    const extraKmRate = comm.additional_rate_per_km !== undefined && comm.additional_rate_per_km !== null
+                        ? Number(comm.additional_rate_per_km)
+                        : Number(row.cc_additional_rate_per_km || row.FreightVariable || 0);
+                    const fixRate = comm.fixed_rate !== undefined && comm.fixed_rate !== null
+                        ? Number(comm.fixed_rate)
+                        : Number(row.cc_fixed_rate || row.FreightFix || 0);
                     const loc = row.consignorName || 'Unknown';
                     if (!adhocMap.has(loc)) {
                         adhocMap.set(loc, {
