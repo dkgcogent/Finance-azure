@@ -24,6 +24,9 @@ import {
   AlertCircle
 } from "lucide-react"
 import { Modal } from "@/components/ui/modal"
+import { numberToWords } from "@/lib/utils"
+import { generateInvoiceExcel } from "../utils/generateInvoiceExcel"
+import cogentesLogoUrl from "@/assets/cogentes-logo.png"
 import { useGlobalStore } from "@/store/useGlobalStore"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useCustomerInvoices, useCreateCustomerInvoice } from "../hooks/useCustomerInvoices"
@@ -557,16 +560,38 @@ export default function CustomerInvoice() {
     }
   }
 
-  const handleDownloadAll = () => {
+  const handleDownloadAll = async () => {
     if (!reportData) return;
-    const wb = XLSX.utils.book_new();
 
     const fy = financialYear || '2025-2026';
     const parts = fy.split('-');
     const shortYear = parts.length >= 2 ? `${parts[0].slice(-2)}-${parts[1].slice(-2)}` : '25-26';
     const invNo = previewInvoiceNumber || `CLPL/${shortYear}/---`;
 
-    // ── Sheet 1: Annexure ───────────────────────────────────────────────────
+    // ── Calculate Freight ────────────────────────────────────────────────────
+    let totalFreight = 0;
+    if (reportData.flipkartAnnexureData && reportData.flipkartAnnexureData.length > 0) {
+      totalFreight = reportData.flipkartAnnexureData.reduce((s: number, r: any) => s + (parseFloat(r.amount || 0) || 0), 0);
+    } else if (reportData.flipkartAdhocAnnexureData && reportData.flipkartAdhocAnnexureData.length > 0) {
+      totalFreight = reportData.flipkartAdhocAnnexureData.reduce((s: number, r: any) => s + (parseFloat(r.amount || 0) || 0), 0);
+    } else if (reportData.annexureData && reportData.annexureData.length > 0) {
+      totalFreight = reportData.annexureData.reduce((s: number, r: any) => s + (parseFloat(r.totalAmount || r.amount || 0) || 0), 0);
+    } else if (reportData.misData && reportData.misData.length > 0) {
+      totalFreight = reportData.misData.reduce((s: number, r: any) => s + (parseFloat(r.FreightFix || r.amount || 0) || 0), 0);
+    }
+
+    const isInterState = invoiceLocation?.toLowerCase().includes('uttar') || invoiceLocation?.toLowerCase().includes('up');
+    const dbGSTNo = reportData?.misData?.find((row: any) => row.GSTNo)?.GSTNo || reportData?.fallbackCustomerGSTIN;
+    const customerGSTIN = dbGSTNo || '—';
+
+    // ── Fetch cogentes logo ───────────────────────────────────────────────────
+    let logoBuffer: ArrayBuffer | undefined;
+    try {
+      const logoResp = await fetch(cogentesLogoUrl);
+      if (logoResp.ok) logoBuffer = await logoResp.arrayBuffer();
+    } catch { /* logo is optional, falls back to text */ }
+
+    // ── Build Annexure rows ───────────────────────────────────────────────────
     let annexureRows: any[][] = [];
     if (reportData.flipkartAnnexureData && reportData.flipkartAnnexureData.length > 0) {
       annexureRows = [
@@ -590,13 +615,9 @@ export default function CustomerInvoice() {
         ])
       ];
     }
-    if (annexureRows.length > 0) {
-      const annexureSheet = XLSX.utils.aoa_to_sheet(annexureRows);
-      XLSX.utils.book_append_sheet(wb, annexureSheet, "Anixture");
-    }
 
-    // ── Sheet 2: MIS ────────────────────────────────────────────────────────
-    const misRows = [
+    // ── Build MIS rows ────────────────────────────────────────────────────────
+    const misRows: any[][] = [
       ["Date", "Consignor Name", "Vendor", "Vehicle No.", "Vehicle Ownership", "Actual Start", "Actual End", "Transit Time", "Total Hrs", "Extra Hrs", "Working Hours", "Start Odometer", "End Odometer", "Distance", "Extra Km", "Order Number", "Trip Log Number"],
       ...(reportData.misData || []).map((r: any) => [
         r.date ? new Date(r.date).toLocaleDateString('en-IN') : '',
@@ -606,12 +627,35 @@ export default function CustomerInvoice() {
         r.distance ?? 0, r.extraKm ?? 0, r.orderNumber || '', r.tripLogNumber || ''
       ])
     ];
-    const misSheet = XLSX.utils.aoa_to_sheet(misRows);
-    XLSX.utils.book_append_sheet(wb, misSheet, "MIS");
 
-    // Download the combined MIS + Annexure Excel file
-    XLSX.writeFile(wb, `Customer_Invoice_${invNo.replace(/\//g, '-')}_MIS_Annexure.xlsx`);
+    // ── Generate single Excel with Invoice + Annexure + MIS sheets ────────────
+    const invoiceBlob = await generateInvoiceExcel({
+      invoiceNumber: invNo,
+      invoiceDate,
+      startDate,
+      endDate,
+      invoiceType,
+      invoiceLocation,
+      customerName: selectedCustomer?.name || 'Customer',
+      customerGSTIN,
+      costCode,
+      projectName: selectedProject?.name || '',
+      totalFreight,
+      isInterState,
+      logoBuffer,
+      annexureRows: annexureRows.length > 0 ? annexureRows : undefined,
+      misRows: misRows.length > 1 ? misRows : undefined,
+    });
+
+    // ── Single download ───────────────────────────────────────────────────────
+    const url = URL.createObjectURL(invoiceBlob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Customer_Invoice_${invNo.replace(/\//g, '-')}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
+
 
   const renderTimeline = (status: string) => {
     const steps = [

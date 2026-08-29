@@ -10,6 +10,7 @@ import { jsPDF } from 'jspdf'
 import { useCustomerInvoices } from "@/features/invoicing/hooks/useCustomerInvoices"
 import { useVendors, useVendorTrips, useCreateVendorInvoice, useNextVendorInvoiceNumber } from "../hooks/useVendorInvoices"
 import { useMasterData } from "@/features/invoicing/hooks/useInvoiceReports"
+import { generateVendorInvoiceExcel } from "../utils/generateVendorInvoiceExcel"
 
 const mockAnnexureData = [
   { sno: 1, location: "SATELLITEHUB_ALD", trips: 3, rates: 1890, extraKm: 155, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 5670, extraKmCost: 1217, dcmCharges: 300, totalAmount: 7187 },
@@ -299,9 +300,8 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     }
   }
 
-  const handleDownloadAll = () => {
+  const handleDownloadAll = async () => {
     if (!vendorTrips) return;
-    const wb = XLSX.utils.book_new();
 
     // ── Sheet 1: Annexure ───────────────────────────────────────────────────
     let annexureRows: any[][] = [];
@@ -319,10 +319,6 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
           r.id, r.vehNo, r.vehType, r.mode, r.loc, r.vertical, r.hrs, r.fixedKms, r.agRate, r.dieselHike, r.totWithHike, r.workDays, r.actualDays, r.totKms, r.extHrAmt, r.extHr, r.extHrRate, r.extKmRate, r.dynFuel, r.totExtKmRate, r.perDayCost, r.perDayKm, r.actualDeployed, r.extKm, r.extKmCharge, r.totalAmt, r.toll, r.dcm, r.finalAmt
         ])
       ];
-    }
-    if (annexureRows.length > 0) {
-      const annexureSheet = XLSX.utils.aoa_to_sheet(annexureRows);
-      XLSX.utils.book_append_sheet(wb, annexureSheet, "Anixture");
     }
 
     // ── Sheet 2: MIS ────────────────────────────────────────────────────────
@@ -342,13 +338,62 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
         ])
       ];
     }
-    if (misRows.length > 0) {
-      const misSheet = XLSX.utils.aoa_to_sheet(misRows);
-      XLSX.utils.book_append_sheet(wb, misSheet, "MIS");
+
+    const totalAmt = (vendorTrips?.misData || []).reduce((acc: number, row: any) => {
+      const rowVal = parseFloat(row.totalAmount ?? row.finalAmt ?? row.totalAmt ?? '0');
+      return acc + (isNaN(rowVal) ? 0 : rowVal);
+    }, 0);
+
+    const vendorNameStr = vendorTrips?.vendorInfo?.VendorName || vendors?.find((v: any) => v.id.toString() === vendorId)?.name || 'Vendor Company Name and Vendor Name';
+    const vendorAddressStr = vendorTrips?.vendorInfo?.VendorAddress || 'Vendor Address and Contact Details';
+    const vendorGSTINStr = vendorTrips?.vendorInfo?.GSTIN || '';
+
+    let locStr = "UP";
+    const selectedLocObj = locations.find((l: any) => String(l.id) === String(locationId));
+    if (selectedLocObj?.name) {
+      locStr = selectedLocObj.name;
+    } else if (vendorTrips?.misData && vendorTrips.misData.length > 0) {
+      const firstLoc = vendorTrips.misData[0].loc || vendorTrips.misData[0].location || "";
+      if (firstLoc.includes("-")) {
+        locStr = firstLoc.split("-")[0].trim();
+      } else if (firstLoc.includes("SATELLITEHUB_")) {
+        locStr = firstLoc.split("_")[1] || "UP";
+      } else {
+        locStr = firstLoc.split(" ")[0] || "UP";
+      }
     }
 
-    const vendorNameStr = vendorTrips?.vendorInfo?.VendorName || vendors?.find(v => v.id.toString() === vendorId)?.name || 'Vendor';
-    XLSX.writeFile(wb, `Vendor_Invoice_${vendorNameStr.replace(/\s+/g, '_')}_MIS_Annexure.xlsx`);
+    const invNum = nextInvoiceNumData?.invoiceNumber || 'VN/26-27/001';
+
+    const blob = await generateVendorInvoiceExcel({
+      invoiceNumber: invNum,
+      invoiceDate: issueDate || new Date().toISOString().split('T')[0],
+      startDate,
+      endDate,
+      vehicleType,
+      locationName: locStr,
+      vendorName: vendorNameStr,
+      vendorAddress: vendorAddressStr,
+      vendorGSTIN: vendorGSTINStr,
+      costCode: costCode || '4477',
+      totalAmount: isNaN(totalAmt) ? 0 : Number(totalAmt.toFixed(2)),
+      bankDetails: {
+        accountHolderName: vendorTrips?.vendorInfo?.AccountHolderName || vendorNameStr,
+        bankName: vendorTrips?.vendorInfo?.BankName || "",
+        accountNumber: vendorTrips?.vendorInfo?.AccountNumber || "",
+        ifscCode: vendorTrips?.vendorInfo?.IFSCCode || "",
+        branchName: vendorTrips?.vendorInfo?.BranchName || "",
+      },
+      annexureRows: annexureRows.length > 0 ? annexureRows : undefined,
+      misRows: misRows.length > 0 ? misRows : undefined,
+    });
+
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `Vendor_Invoice_${vendorNameStr.replace(/\s+/g, '_')}_${invNum.replace(/\//g, '-')}.xlsx`;
+    link.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleNext = async () => {
@@ -1140,10 +1185,16 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
 
               <div className="flex items-center gap-4">
                 {step === "preview" && (
-                  <Button variant="outline" onClick={handleDownloadPDF}>
-                    <Download className="mr-2 h-4 w-4" />
-                    Download PDF
-                  </Button>
+                  <>
+                    <Button variant="outline" onClick={handleDownloadPDF}>
+                      <Download className="mr-2 h-4 w-4" />
+                      Download PDF
+                    </Button>
+                    <Button variant="outline" onClick={handleDownloadAll} className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-300">
+                      <Download className="mr-2 h-4 w-4 text-emerald-600" />
+                      Download Excel
+                    </Button>
+                  </>
                 )}
                 <Button
                   className="bg-blue-600 text-white hover:bg-blue-700 font-semibold px-6"
