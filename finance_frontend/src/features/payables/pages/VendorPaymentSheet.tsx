@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { apiClient } from "@/lib/api"
 import html2pdf from "html2pdf.js"
+import { exportTableToExcel } from "@/lib/excelExportHelper"
 
 type VendorPaymentEntry = {
   id: string
@@ -240,21 +241,36 @@ export default function VendorPaymentSheet() {
     }).from(element).save();
   };
 
-  const downloadExcel = () => {
+  const downloadExcel = async () => {
     setShowPrintMenu(false);
     if (!data.length) return;
     
-    const headers = ['Vendor Name', 'Account Number', 'IFSC Code', 'Beneficiary Name', 'Amount', 'Remarks'];
-    const csvContent = [
-      headers.join(','),
-      ...data.map(d => `"${d.vendorName}","=""${d.beneficiaryAccountNo}"""\,"${d.ifscCode}","${d.beneficiaryName}","${d.amount}","${d.remarksBeneficiary}"`)
-    ].join('\n');
-    
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Vendor_Payment_${month}_${year}.csv`;
-    link.click();
+    const headers = [
+      'Vendor Name',
+      'Beneficiary Account No',
+      'IFSC Code',
+      'Beneficiary Name',
+      'Amount',
+      'Remarks for Client',
+      'Remarks for Beneficiary'
+    ];
+
+    const formattedData = data.map(d => [
+      d.vendorName || '',
+      d.beneficiaryAccountNo || '',
+      d.ifscCode || '',
+      d.beneficiaryName || '',
+      Number(d.amount || 0),
+      d.remarksClient || 'Vendor Bills',
+      d.remarksBeneficiary || 'Vendor Payment'
+    ]);
+
+    await exportTableToExcel({
+      sheetName: 'Vendor Payment Sheet',
+      headers,
+      data: formattedData,
+      fileName: `Vendor_Payment_${month}_${year}.xlsx`,
+    });
   };
 
   const downloadTXT = () => {

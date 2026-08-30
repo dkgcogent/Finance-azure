@@ -14,6 +14,7 @@ import { Invoice } from "@/data/mockData";
 import { formatCurrency, formatDate, calculateAgingDays } from "@/utils/format";
 import { Badge } from "@/components/ui/badge";
 import { ArrowUpDown, Search, Filter, Download, Columns, FileText } from "lucide-react";
+import { exportTableToExcel } from "@/lib/excelExportHelper";
 
 interface InvoiceTableProps {
   data: Invoice[];
@@ -134,30 +135,43 @@ export function InvoiceTable({ data, onRowClick, globalFilter, setGlobalFilter }
     getFilteredRowModel: getFilteredRowModel(),
   });
 
-  const exportCSV = () => {
+  const exportCSV = async () => {
     // Only export currently visible/filtered rows
     const rows = table.getRowModel().rows.map(row => row.original);
     if (rows.length === 0) return;
     
-    // Extract headers
-    const headers = Object.keys(rows[0]).join(",");
-    // Extract values
-    const csvContent = rows.map(row => {
-      return Object.values(row).map(val => {
-        if (val === null || val === undefined) return "";
-        // Escape quotes
-        return `"${String(val).replace(/"/g, '""')}"`;
-      }).join(",");
-    }).join("\n");
+    const headers = [
+      "Invoice No",
+      "Type",
+      "Party Name",
+      "Invoice Date",
+      "Due Date",
+      "Invoice Amount",
+      "Total GST",
+      "Final Payable",
+      "Aging (Days)",
+      "Payment Status"
+    ];
 
-    const blob = new Blob([headers + "\n" + csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.setAttribute("download", "invoice_master_export.csv");
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const formattedData = rows.map(r => [
+      r.invoiceNo || '',
+      r.type || '',
+      r.customerName || '',
+      r.invoiceDate ? formatDate(r.invoiceDate) : '',
+      r.dueDate ? formatDate(r.dueDate) : '',
+      Number(r.invoiceAmount || 0),
+      Number(r.totalGst || 0),
+      Number(r.finalPayable || 0),
+      calculateAgingDays(r.dueDate, r.paymentStatus) ?? '',
+      r.paymentStatus || ''
+    ]);
+
+    await exportTableToExcel({
+      sheetName: "Invoice Master",
+      headers,
+      data: formattedData,
+      fileName: `Invoice_Master_${new Date().toISOString().split('T')[0]}.xlsx`,
+    });
   };
 
   return (

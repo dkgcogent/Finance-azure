@@ -5,9 +5,10 @@ import { useInvoices } from "./hooks/useInvoices";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2 } from "lucide-react";
 import { InvoiceTable } from "./components/InvoiceTable";
-import { InvoiceDetailsDrawer } from "./components/InvoiceDetailsDrawer";
 import { ArrowLeft, Filter, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { exportTableToExcel } from "@/lib/excelExportHelper";
+import { formatDate, calculateAgingDays } from "@/utils/format";
 
 type TabFilter = "All" | "Customer" | "Vendor";
 
@@ -24,6 +25,43 @@ export default function InvoiceMaster() {
     if (activeTab === "All") return invoices;
     return invoices.filter(inv => inv.type === activeTab);
   }, [activeTab, invoices]);
+
+  const handleExport = async () => {
+    if (!filteredData.length) return;
+
+    const headers = [
+      "Invoice No",
+      "Type",
+      "Party Name",
+      "Invoice Date",
+      "Due Date",
+      "Invoice Amount",
+      "Total GST",
+      "Final Payable",
+      "Aging (Days)",
+      "Payment Status"
+    ];
+
+    const formattedData = filteredData.map(r => [
+      r.invoiceNo || '',
+      r.type || '',
+      r.customerName || '',
+      r.invoiceDate ? formatDate(r.invoiceDate) : '',
+      r.dueDate ? formatDate(r.dueDate) : '',
+      Number(r.invoiceAmount || 0),
+      Number(r.totalGst || 0),
+      Number(r.finalPayable || 0),
+      calculateAgingDays(r.dueDate, r.paymentStatus) ?? '',
+      r.paymentStatus || ''
+    ]);
+
+    await exportTableToExcel({
+      sheetName: "Invoice Master",
+      headers,
+      data: formattedData,
+      fileName: `Global_Invoice_Master_${financialYear || new Date().getFullYear()}.xlsx`,
+    });
+  };
 
   return (
     <div className="min-h-screen bg-[#F8F9FB] font-sans text-gray-900 pb-12">
@@ -49,7 +87,7 @@ export default function InvoiceMaster() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" className="h-8">
+          <Button variant="outline" size="sm" className="h-8" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>

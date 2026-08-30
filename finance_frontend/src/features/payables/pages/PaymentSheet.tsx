@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input"
 import { apiClient } from "@/lib/api"
 import html2pdf from "html2pdf.js"
+import { exportTableToExcel } from "@/lib/excelExportHelper"
 
 type ImprestRecord = {
   id: string;
@@ -235,21 +236,40 @@ export default function PaymentSheet() {
     }).from(element).save();
   };
 
-  const downloadExcel = () => {
+  const downloadExcel = async () => {
     setShowPrintMenu(false);
     if (!data.length) return;
     
-    const headers = ['Date', 'Employee Name', 'Employee Code', 'Account Number', 'IFSC Code', 'Beneficiary Name', 'Amount', 'Remarks'];
-    const csvContent = [
-      headers.join(','),
-      ...data.map(d => `"${d.date || ''}","${d.employeeName}","${d.employeeCode}","=""${d.beneficiaryAccountNo}"""\,"${d.ifscCode}","${d.beneficiaryName}","${d.amount}","${d.remarksBeneficiary}"`)
-    ].join('\n');
-    
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Imprest_Payment_${fileSuffix}.csv`;
-    link.click();
+    const headers = [
+      'Date',
+      'Employee Name',
+      'Employee Code',
+      'Beneficiary Account No',
+      'IFSC Code',
+      'Beneficiary Name',
+      'Amount',
+      'Remarks for Client',
+      'Remarks for Beneficiary'
+    ];
+
+    const formattedData = data.map(d => [
+      d.date || '',
+      d.employeeName || '',
+      d.employeeCode || '',
+      d.beneficiaryAccountNo || '',
+      d.ifscCode || '',
+      d.beneficiaryName || '',
+      Number(d.amount || 0),
+      d.remarksClient || 'Imprest Payment',
+      d.remarksBeneficiary || ''
+    ]);
+
+    await exportTableToExcel({
+      sheetName: 'Imprest Payment Sheet',
+      headers,
+      data: formattedData,
+      fileName: `Imprest_Payment_${fileSuffix}.xlsx`,
+    });
   };
 
   const downloadTXT = () => {

@@ -591,31 +591,38 @@ export async function generateInvoiceExcel(params: InvoiceExcelParams): Promise<
   outerRow(ws, 44, 2, 7, false, true, "medium");
 
   // =========================================================================
+  // =========================================================================
   // SHEET 2: ANNEXURE
   // =========================================================================
   if (annexureRows && annexureRows.length > 0) {
     const wsA = wb.addWorksheet("Annexure", { views: [{ showGridLines: true }] });
     const [headerRow, ...dataRows] = annexureRows;
-    // Write header
     const aHeaderRow = wsA.addRow(headerRow);
+    aHeaderRow.height = 26;
     aHeaderRow.eachCell(cell => {
-      cell.font = { bold: true, size: 10, name: "Calibri" };
+      cell.font = { bold: true, size: 10, name: "Calibri", color: { argb: "FF000000" } };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
       cell.border = { top: THIN, bottom: THIN, left: THIN, right: THIN };
       cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
     });
-    wsA.getRow(1).height = 30;
-    // Write data
     dataRows.forEach(row => {
       const r = wsA.addRow(row);
+      r.height = 20;
       r.eachCell(cell => {
-        cell.font = { size: 10, name: "Calibri" };
+        cell.font = { size: 10, name: "Calibri", color: { argb: "FF000000" } };
         cell.border = { top: THIN, bottom: THIN, left: THIN, right: THIN };
         cell.alignment = { horizontal: "center", vertical: "middle" };
       });
     });
-    // Auto-fit columns roughly
-    wsA.columns.forEach(col => { if (col) col.width = 18; });
+    headerRow.forEach((h: any, idx: number) => {
+      let maxLen = String(h || "").length;
+      dataRows.forEach(r => {
+        const val = r[idx];
+        const valLen = val !== null && val !== undefined ? String(val).length : 0;
+        if (valLen > maxLen) maxLen = valLen;
+      });
+      wsA.getColumn(idx + 1).width = Math.min(35, Math.max(12, maxLen + 3));
+    });
   }
 
   // =========================================================================
@@ -625,22 +632,31 @@ export async function generateInvoiceExcel(params: InvoiceExcelParams): Promise<
     const wsM = wb.addWorksheet("MIS", { views: [{ showGridLines: true }] });
     const [misHeader, ...misData] = misRows;
     const mHeaderRow = wsM.addRow(misHeader);
+    mHeaderRow.height = 26;
     mHeaderRow.eachCell(cell => {
-      cell.font = { bold: true, size: 10, name: "Calibri" };
+      cell.font = { bold: true, size: 10, name: "Calibri", color: { argb: "FF000000" } };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFD9E1F2" } };
       cell.border = { top: THIN, bottom: THIN, left: THIN, right: THIN };
       cell.alignment = { horizontal: "center", vertical: "middle", wrapText: true };
     });
-    wsM.getRow(1).height = 30;
     misData.forEach(row => {
       const r = wsM.addRow(row);
+      r.height = 20;
       r.eachCell(cell => {
-        cell.font = { size: 10, name: "Calibri" };
+        cell.font = { size: 10, name: "Calibri", color: { argb: "FF000000" } };
         cell.border = { top: THIN, bottom: THIN, left: THIN, right: THIN };
         cell.alignment = { horizontal: "center", vertical: "middle" };
       });
     });
-    wsM.columns.forEach(col => { if (col) col.width = 18; });
+    misHeader.forEach((h: any, idx: number) => {
+      let maxLen = String(h || "").length;
+      misData.forEach(r => {
+        const val = r[idx];
+        const valLen = val !== null && val !== undefined ? String(val).length : 0;
+        if (valLen > maxLen) maxLen = valLen;
+      });
+      wsM.getColumn(idx + 1).width = Math.min(35, Math.max(12, maxLen + 3));
+    });
   }
 
   // ── Output: single workbook with all sheets ───────────────────────────────────

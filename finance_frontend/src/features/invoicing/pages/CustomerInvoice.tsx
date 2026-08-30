@@ -26,6 +26,7 @@ import {
 import { Modal } from "@/components/ui/modal"
 import { numberToWords } from "@/lib/utils"
 import { generateInvoiceExcel } from "../utils/generateInvoiceExcel"
+import { exportTableToExcel } from "@/lib/excelExportHelper"
 import cogentesLogoUrl from "@/assets/cogentes-logo.png"
 import { useGlobalStore } from "@/store/useGlobalStore"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -430,7 +431,7 @@ export default function CustomerInvoice() {
     []
   )
 
-  const handleDownloadExcel = (type: "annexure" | "mis") => {
+  const handleDownloadExcel = async (type: "annexure" | "mis") => {
     let dataToExport: any[] = [];
     let keys: string[] = [];
     let labels: string[] = [];
@@ -457,20 +458,8 @@ export default function CustomerInvoice() {
 
     if (!dataToExport.length) return;
 
-    const formatForExcel = (val: any, key: string) => {
-      if (val === null || val === undefined) return '';
-      let strVal = val.toString();
-      
-      // Force text rendering in Excel to prevent scientific notation or ######## width issues
-      if (key === 'date' || key === 'actualStart' || key === 'actualEnd' || key === 'vehicle' || key === 'vehicleNo' || key === 'orderNumber' || key === 'tripLogNumber') {
-        strVal = ` ${strVal}`;
-      }
-      return strVal.replace(/"/g, '""');
-    };
-
-    const csvContent = [
-      labels.map(l => `"${l}"`).join(","),
-      ...dataToExport.map((row: any) => keys.map(k => {
+    const formattedData = dataToExport.map((row: any) =>
+      keys.map((k) => {
         let val = row[k];
         if (type === "annexure" && (!reportData?.flipkartAnnexureData && !reportData?.flipkartAdhocAnnexureData)) {
           if (k === 'rates') val = row.rates ?? row.fixRate ?? row.agreementRate ?? 0;
@@ -483,19 +472,22 @@ export default function CustomerInvoice() {
           if (k === 'handling') val = row.handling ?? row.handlingCharges ?? 0;
           if (k === 'amount') val = row.totalAmount ?? row.amount ?? 0;
         }
-        return `"${formatForExcel(val, k)}"`;
-      }).join(","))
-    ].join("\n");
+        if (k === 'date' && val) {
+          return new Date(val).toLocaleDateString('en-GB');
+        }
+        if (k === 'transit') {
+          return Math.round(Number(val || 0));
+        }
+        return val ?? '';
+      })
+    );
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Customer_Invoice_${type}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    await exportTableToExcel({
+      sheetName: type === "mis" ? "MIS" : "Annexure",
+      headers: labels,
+      data: formattedData,
+      fileName: `Customer_Invoice_${type === "mis" ? "MIS" : "Annexure"}.xlsx`,
+    });
   }
   const handleDownloadPDF = () => {
     const printArea = document.getElementById('invoice-print-area') || document.getElementById('invoice-print-area-hidden');

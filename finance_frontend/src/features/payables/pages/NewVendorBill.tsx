@@ -11,6 +11,7 @@ import { useCustomerInvoices } from "@/features/invoicing/hooks/useCustomerInvoi
 import { useVendors, useVendorTrips, useCreateVendorInvoice, useNextVendorInvoiceNumber } from "../hooks/useVendorInvoices"
 import { useMasterData } from "@/features/invoicing/hooks/useInvoiceReports"
 import { generateVendorInvoiceExcel } from "../utils/generateVendorInvoiceExcel"
+import { exportTableToExcel } from "@/lib/excelExportHelper"
 
 const mockAnnexureData = [
   { sno: 1, location: "SATELLITEHUB_ALD", trips: 3, rates: 1890, extraKm: 155, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 5670, extraKmCost: 1217, dcmCharges: 300, totalAmount: 7187 },
@@ -457,7 +458,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     }
   };
 
-  const handleExportCSV = () => {
+  const handleExportCSV = async () => {
     let dataToExport = [];
     let keys: string[] = [];
     let labels: string[] = [];
@@ -484,32 +485,22 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
 
     if (!dataToExport.length) return;
 
-    const formatForExcel = (val: any, key: string) => {
-      if (val === null || val === undefined) return '';
-      let strVal = val.toString();
+    const formattedData = dataToExport.map((row: any) =>
+      keys.map((k) => {
+        let val = row[k];
+        if (k === "date" && val) {
+          return new Date(val).toLocaleDateString("en-GB");
+        }
+        return val ?? "";
+      })
+    );
 
-      // Force text rendering in Excel to prevent scientific notation (9.03E+10) or ######## width issues
-      if (key === 'date' || key === 'vehNo' || key === 'parentVeh' || key === 'vehicleNumber' || key === 'inTime' || key === 'outTime') {
-        strVal = ` ${strVal}`;
-      }
-
-      return strVal.replace(/"/g, '""');
-    };
-
-    const csvContent = [
-      labels.map(l => `"${l}"`).join(","),
-      ...dataToExport.map((row: any) => keys.map(k => `"${formatForExcel(row[k], k)}"`).join(","))
-    ].join("\n");
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `Vendor_Invoice_${step}_${vehicleType}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    await exportTableToExcel({
+      sheetName: step === "mis" ? "MIS" : "Annexure",
+      headers: labels,
+      data: formattedData,
+      fileName: `Vendor_Invoice_${step === "mis" ? "MIS" : "Annexure"}_${vehicleType}.xlsx`,
+    });
   };
 
   return (

@@ -17,6 +17,7 @@ import {
   Plus
 } from "lucide-react"
 import { apiClient } from "@/lib/api"
+import { exportTableToExcel } from "@/lib/excelExportHelper"
 
 type InvoiceRecord = {
   id: string
@@ -206,35 +207,35 @@ export default function GlobalInvoiceMaster() {
     setMasterRows(prev => [newRow, ...prev]);
   };
 
-  const handleExport = () => {
+  const handleExport = async () => {
     if (!masterRows || masterRows.length === 0) {
       alert("No data to export");
       return;
     }
     
-    // Create CSV Headers
-    const headers = columnsConfig.map(c => `"${c.label.replace(/\n/g, ' ')}"`).join(',');
+    const headers = columnsConfig.map(c => c.label.replace(/\n/g, ' '));
     
-    // Create CSV Rows
-    const csvRows = masterRows.map(row => {
+    const formattedData = masterRows.map(row => {
       return columnsConfig.map(c => {
-        const val = row[c.key] || '';
-        // Escape quotes and wrap in quotes
-        return `"${String(val).replace(/"/g, '""')}"`;
-      }).join(',');
+        const raw = row[c.key];
+        if (raw === null || raw === undefined) return '';
+        const strVal = String(raw).trim();
+        // If it's a numeric amount string with commas like "10,82,657.10"
+        const isNumeric = /^-?[\d,]+(\.\d+)?$/.test(strVal) && !c.key.toLowerCase().includes('gst') && !c.key.toLowerCase().includes('date') && !c.key.toLowerCase().includes('no') && !c.key.toLowerCase().includes('hsn');
+        if (isNumeric) {
+          const num = parseFloat(strVal.replace(/,/g, ''));
+          if (!isNaN(num)) return num;
+        }
+        return strVal;
+      });
     });
-    
-    const csvString = [headers, ...csvRows].join('\n');
-    
-    // Trigger download
-    const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `Global_Invoice_Master_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+
+    await exportTableToExcel({
+      sheetName: "Invoice Master",
+      headers,
+      data: formattedData,
+      fileName: `Global_Invoice_Master_${new Date().toISOString().split('T')[0]}.xlsx`,
+    });
   };
 
   useEffect(() => {

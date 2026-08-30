@@ -21,6 +21,7 @@ import {
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import html2pdf from "html2pdf.js"
+import { exportTableToExcel } from "@/lib/excelExportHelper"
 
 type PaymentEntry = {
   id: string
@@ -173,21 +174,38 @@ export default function SalaryPaymentSheet() {
     }).from(element).save();
   };
 
-  const downloadExcel = () => {
+  const downloadExcel = async () => {
     setShowPrintMenu(false);
     if (!paymentData.length) return;
     
-    const headers = ['Employee Name', 'Employee Code', 'Account Number', 'IFSC Code', 'Beneficiary Name', 'Amount', 'Remarks'];
-    const csvContent = [
-      headers.join(','),
-      ...paymentData.map(d => `"${d.employeeName}","${d.employeeCode}","=""${d.beneficiaryAccountNo}"""\,"${d.ifscCode}","${d.beneficiaryName}","${d.amount}","${d.remarksBeneficiary}"`)
-    ].join('\n');
-    
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Salary_Payment_${month}_${year}.csv`;
-    link.click();
+    const headers = [
+      'Employee Name',
+      'Employee Code',
+      'Beneficiary Account No',
+      'IFSC Code',
+      'Beneficiary Name',
+      'Amount',
+      'Remarks for Client',
+      'Remarks for Beneficiary'
+    ];
+
+    const formattedData = paymentData.map(d => [
+      d.employeeName || '',
+      d.employeeCode || '',
+      d.beneficiaryAccountNo || '',
+      d.ifscCode || '',
+      d.beneficiaryName || '',
+      Number(d.amount || 0),
+      d.remarksClient || 'Salary Payment',
+      d.remarksBeneficiary || ''
+    ]);
+
+    await exportTableToExcel({
+      sheetName: 'Salary Payment Sheet',
+      headers,
+      data: formattedData,
+      fileName: `Salary_Payment_${month}_${year}.xlsx`,
+    });
   };
 
   const downloadTXT = () => {
@@ -264,7 +282,7 @@ export default function SalaryPaymentSheet() {
                     Download as PDF
                   </button>
                   <button className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground text-left" onClick={downloadExcel}>
-                    Download as Excel (CSV)
+                    Download as Excel
                   </button>
                   <button className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground text-left" onClick={downloadTXT}>
                     Download as TXT (For Bank)
