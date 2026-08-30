@@ -472,7 +472,8 @@ exports.invoiceService = {
           cc.toll as cc_toll,
           cc.parking as cc_parking,
           cc.state as cc_state,
-          vc.fixed_rate as vc_fixed_rate
+          vc.fixed_rate as vc_fixed_rate,
+          p.LocationsJSON as LocationsJSON
         FROM fixed_transactions ft
         LEFT JOIN vehicle v ON v.VehicleID = JSON_UNQUOTE(JSON_EXTRACT(ft.VehicleIDs, '$[0]'))
         LEFT JOIN vendor vend ON vend.VendorID = ft.VendorID
@@ -542,7 +543,8 @@ exports.invoiceService = {
           cc.fixed_rate as cc_fixed_rate,
           cc.additional_rate_per_km as cc_additional_rate_per_km,
           cc.state as cc_state,
-          vc.fixed_rate as vc_fixed_rate
+          vc.fixed_rate as vc_fixed_rate,
+          p.LocationsJSON as LocationsJSON
         FROM adhoc_transactions at
         LEFT JOIN project p ON p.ProjectID = at.ProjectID
         LEFT JOIN vendor vend ON vend.VendorID = at.VendorID
@@ -574,16 +576,36 @@ exports.invoiceService = {
             if (!stateFilter)
                 return true;
             const filterLower = stateFilter.toLowerCase();
+            // Priority 1: if the customer_commercial state matches directly
+            if (row.cc_state) {
+                return row.cc_state.toLowerCase().includes(filterLower);
+            }
             const siteRaw = (row.ourBranch || row.consignorName || row.CustomerSite || row.CustSite || '').toLowerCase();
-            const upCities = ['noida', 'lucknow', 'ghaziabad', 'kanpur', 'agra', 'varanasi', 'meerut', 'greater noida'];
-            const dlCities = ['dwarka', 'delhi', 'janakpuri', 'okhla', 'rohini', 'mayapuri', 'azadpur', 'kapashera', 'narela'];
-            const hrCities = ['gurgaon', 'gurugram', 'faridabad', 'manesar', 'sonipat', 'panipat', 'karnal'];
+            // Priority 2: use LocationsJSON from the project to map location → state
+            if (row.LocationsJSON) {
+                try {
+                    const locArray = JSON.parse(row.LocationsJSON);
+                    const matchedEntry = locArray.find((item) => {
+                        const loc = (item.Location || '').toLowerCase();
+                        const site = (item.CustomerSite || '').toLowerCase();
+                        return (loc && siteRaw.includes(loc)) || (site && siteRaw.includes(site));
+                    });
+                    if (matchedEntry && matchedEntry.State) {
+                        return matchedEntry.State.toLowerCase().includes(filterLower);
+                    }
+                }
+                catch (e) { }
+            }
+            // Priority 3: fallback to hardcoded city lists (expanded with all known cities)
+            const upCities = ['noida', 'lucknow', 'ghaziabad', 'kanpur', 'agra', 'varanasi', 'meerut', 'greater noida', 'rampur', 'aligarh', 'bareilly', 'moradabad'];
+            const dlCities = ['dwarka', 'delhi', 'janakpuri', 'okhla', 'rohini', 'mayapuri', 'azadpur', 'kapashera', 'narela', 'rajiv chowk', 'ram nagar'];
+            const hrCities = ['gurgaon', 'gurugram', 'faridabad', 'manesar', 'sonipat', 'panipat', 'karnal', 'palwal', 'rewari', 'bahadurgarh', 'ambala', 'hisar', 'rohtak'];
             if (filterLower.includes('delhi') || filterLower === 'dl') {
                 if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up'))
                     return false;
                 if (hrCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('hr'))
                     return false;
-                if (dlCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('dl'))
+                if (dlCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('dl') || siteRaw.includes('delhi'))
                     return true;
             }
             if (filterLower.includes('uttar pradesh') || filterLower === 'up') {
@@ -591,7 +613,7 @@ exports.invoiceService = {
                     return false;
                 if (hrCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('hr'))
                     return false;
-                if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up'))
+                if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up') || siteRaw.includes('uttar pradesh'))
                     return true;
             }
             if (filterLower.includes('haryana') || filterLower === 'hr') {
@@ -599,11 +621,8 @@ exports.invoiceService = {
                     return false;
                 if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up'))
                     return false;
-                if (hrCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('hr'))
+                if (hrCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('hr') || siteRaw.includes('haryana'))
                     return true;
-            }
-            if (row.cc_state) {
-                return row.cc_state.toLowerCase().includes(filterLower);
             }
             return siteRaw.includes(filterLower) || (row.ourState && row.ourState.toLowerCase().includes(filterLower));
         });

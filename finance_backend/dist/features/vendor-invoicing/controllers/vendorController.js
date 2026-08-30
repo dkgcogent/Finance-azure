@@ -100,21 +100,23 @@ const getVendorTrips = async (req, res) => {
         const stateFilter = (locationId && String(locationId).trim() && String(locationId) !== 'undefined' && String(locationId) !== 'null')
             ? String(locationId).trim()
             : null;
+        const custIdVal = customerId ? String(customerId) : null;
+        const projIdVal = projectId ? String(projectId) : null;
         const [commercialRows] = await database_1.db.query(`SELECT * FROM vendor_commercial 
        WHERE (vendor_name = ? OR vendor_id = ? OR (vendor_name IS NOT NULL AND vendor_name LIKE CONCAT('%', ?, '%'))) 
        ORDER BY 
+         (CASE WHEN ? IS NOT NULL AND (project_id = ? OR project LIKE CONCAT('%', ?, '%')) THEN 0 ELSE 1 END),
          (CASE WHEN ? IS NOT NULL AND (LOWER(state) = LOWER(?) OR LOWER(state) LIKE CONCAT('%', LOWER(?), '%')) THEN 0 ELSE 1 END),
          (CASE WHEN LOWER(type_of_vehicle_placement) = LOWER(?) THEN 0 ELSE 1 END), 
-         id DESC`, [actualVendorName, vendorName, actualVendorName, stateFilter, stateFilter, stateFilter, placementType]);
+         id DESC`, [actualVendorName, vendorName, actualVendorName, projIdVal, projIdVal, projIdVal, stateFilter, stateFilter, stateFilter, placementType]);
         const commercialRates = commercialRows.length > 0 ? commercialRows[0] : null;
-        const custIdVal = customerId ? String(customerId) : null;
-        const projIdVal = projectId ? String(projectId) : null;
         if (tripType === 'adhoc') {
             // Fetch all trips for this vendor in the date range
             const [rawTrips] = await database_1.db.query(`
         SELECT 
           DATE_FORMAT(COALESCE(at.ServiceDate, at.TransactionDate), '%d/%m/%Y') as date,
           at.Location, at.CustomerSite, at.CustSite, at.VendorName, at.VehicleNumber, at.VehicleType, at.VehicleOwnershipType, at.TripType, at.DriverType, 
+          at.State as TripState, p.State as ProjectState, p.LocationsJSON,
           COALESCE(at.ArrivalTimeAtHub, at.InTimeByCust, at.VehicleReportingAtHub, at.VehicleEntryInHub) as ArrivalTimeAtHub, 
           COALESCE(at.OutTimeFromHub, at.VehicleOutFromHubFinal, at.ReturnReportingTime, at.OutTimeFrom, at.VehicleReturnAtHub, at.VehicleOutFromHubForDelivery) as OutTimeFromHub, 
           at.OpeningKM, at.ClosingKM, at.ExtraKM, at.ExtraKMCost, at.VFreightFix, at.DCMCharges, at.TotalFreight,
@@ -139,13 +141,31 @@ const getVendorTrips = async (req, res) => {
                 if (!stateFilter)
                     return true;
                 const filterLower = stateFilter.toLowerCase();
+                if (t.TripState && t.TripState.toLowerCase() === filterLower) {
+                    return true;
+                }
                 if (t.vc_state) {
                     return t.vc_state.toLowerCase().includes(filterLower);
                 }
+                if (t.LocationsJSON) {
+                    try {
+                        const locArray = JSON.parse(t.LocationsJSON);
+                        const siteRaw = (t.CustomerSite || t.CustSite || t.Location || '').toLowerCase();
+                        const matchedEntry = locArray.find((item) => {
+                            const loc = (item.Location || '').toLowerCase();
+                            const site = (item.CustomerSite || '').toLowerCase();
+                            return (loc && siteRaw.includes(loc)) || (site && siteRaw.includes(site));
+                        });
+                        if (matchedEntry && matchedEntry.State) {
+                            return matchedEntry.State.toLowerCase().includes(filterLower);
+                        }
+                    }
+                    catch (e) { }
+                }
                 const siteRaw = (t.CustomerSite || t.CustSite || t.Location || '').toLowerCase();
-                const upCities = ['noida', 'lucknow', 'ghaziabad', 'kanpur', 'agra', 'varanasi', 'meerut', 'greater noida'];
-                const dlCities = ['dwarka', 'delhi', 'janakpuri', 'okhla', 'rohini', 'mayapuri', 'azadpur', 'kapashera', 'narela'];
-                const hrCities = ['gurgaon', 'gurugram', 'faridabad', 'manesar', 'sonipat', 'panipat', 'karnal'];
+                const upCities = ['noida', 'lucknow', 'ghaziabad', 'kanpur', 'agra', 'varanasi', 'meerut', 'greater noida', 'rampur', 'aligarh', 'bareilly', 'moradabad'];
+                const dlCities = ['dwarka', 'delhi', 'janakpuri', 'okhla', 'rohini', 'mayapuri', 'azadpur', 'kapashera', 'narela', 'rajiv chowk', 'ram nagar'];
+                const hrCities = ['gurgaon', 'gurugram', 'faridabad', 'manesar', 'sonipat', 'panipat', 'karnal', 'palwal', 'rewari', 'bahadurgarh', 'ambala', 'hisar', 'rohtak'];
                 if (filterLower.includes('delhi') || filterLower === 'dl') {
                     if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up'))
                         return false;
@@ -279,6 +299,7 @@ const getVendorTrips = async (req, res) => {
           DATE_FORMAT(COALESCE(ft.ServiceDate, ft.TransactionDate), '%d/%m/%Y') as date,
           ft.Location, ft.CustomerSite, ft.VendorName, ft.VehicleNumber, ft.VehicleType, ft.TripType, 
           'Driver' as DriverType,
+          p.State as ProjectState, p.LocationsJSON,
           COALESCE(ft.ArrivalTimeAtHub, ft.InTimeByCust, ft.VehicleEntryInHub, ft.VehicleReportingAtHub) as ArrivalTimeAtHub, 
           COALESCE(ft.OutTimeFromHub, ft.VehicleReturnAtHub, ReturnReportingTime, ft.OutTimeFrom) as OutTimeFromHub, 
           ft.TotalDutyHours,
@@ -307,13 +328,29 @@ const getVendorTrips = async (req, res) => {
                 if (!stateFilter)
                     return true;
                 const filterLower = stateFilter.toLowerCase();
+                // Primary: check the vendor_commercial state linked via vendor_commercial_id
                 if (t.vc_state) {
                     return t.vc_state.toLowerCase().includes(filterLower);
                 }
+                if (t.LocationsJSON) {
+                    try {
+                        const locArray = JSON.parse(t.LocationsJSON);
+                        const siteRaw = (t.CustomerSite || t.Location || '').toLowerCase();
+                        const matchedEntry = locArray.find((item) => {
+                            const loc = (item.Location || '').toLowerCase();
+                            const site = (item.CustomerSite || '').toLowerCase();
+                            return (loc && siteRaw.includes(loc)) || (site && siteRaw.includes(site));
+                        });
+                        if (matchedEntry && matchedEntry.State) {
+                            return matchedEntry.State.toLowerCase().includes(filterLower);
+                        }
+                    }
+                    catch (e) { }
+                }
                 const siteRaw = (t.CustomerSite || t.Location || '').toLowerCase();
-                const upCities = ['noida', 'lucknow', 'ghaziabad', 'kanpur', 'agra', 'varanasi', 'meerut', 'greater noida'];
-                const dlCities = ['dwarka', 'delhi', 'janakpuri', 'okhla', 'rohini', 'mayapuri', 'azadpur', 'kapashera', 'narela'];
-                const hrCities = ['gurgaon', 'gurugram', 'faridabad', 'manesar', 'sonipat', 'panipat', 'karnal'];
+                const upCities = ['noida', 'lucknow', 'ghaziabad', 'kanpur', 'agra', 'varanasi', 'meerut', 'greater noida', 'rampur', 'aligarh', 'bareilly', 'moradabad'];
+                const dlCities = ['dwarka', 'delhi', 'janakpuri', 'okhla', 'rohini', 'mayapuri', 'azadpur', 'kapashera', 'narela', 'rajiv chowk', 'ram nagar'];
+                const hrCities = ['gurgaon', 'gurugram', 'faridabad', 'manesar', 'sonipat', 'panipat', 'karnal', 'palwal', 'rewari', 'bahadurgarh', 'ambala', 'hisar', 'rohtak'];
                 if (filterLower.includes('delhi') || filterLower === 'dl') {
                     if (upCities.some(c => siteRaw.includes(c)) || siteRaw.startsWith('up'))
                         return false;
@@ -348,7 +385,7 @@ const getVendorTrips = async (req, res) => {
                 const rawHub = t.CustomerSite || t.Location || '';
                 const cleanHub = rawHub.replace(/^[A-Z]{2}\s*-\s*/i, '').replace(/\s*\(Emp:.*?\)/gi, '').trim();
                 const locMatch = rawHub.match(/^([A-Z]{2})\s*-\s*/i);
-                const cleanLoc = selectedState || (locMatch ? locMatch[1].toUpperCase() : (t.State || t.Location || 'UP'));
+                const cleanLoc = selectedState || (locMatch ? locMatch[1].toUpperCase() : (t.ProjectState || t.Location || 'UP'));
                 return {
                     id: index + 1,
                     date: t.date || '',
