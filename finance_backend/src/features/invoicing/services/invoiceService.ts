@@ -1088,6 +1088,7 @@ export const invoiceService = {
         id: String(row.finance_id),
         type: "Customer",
         gst: "DL", // Static defaults for missing UI mapped fields
+        generationType: "System",
         gstNo: "07AAFCC4715N1ZG",
         invNo: row.invNo,
         poNo: "",
@@ -1200,6 +1201,7 @@ export const invoiceService = {
           isStandalone: true,
           type: "Customer",
           gst: r.gst || "DL",
+          generationType: "Manual",
           gstNo: r.gstNo || "07AAFCC4715N1ZG",
           invNo: r.invNo || "",
           poNo: r.poNo || "",

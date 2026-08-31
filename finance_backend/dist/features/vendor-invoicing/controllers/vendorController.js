@@ -116,7 +116,7 @@ const getVendorTrips = async (req, res) => {
         SELECT 
           DATE_FORMAT(COALESCE(at.ServiceDate, at.TransactionDate), '%d/%m/%Y') as date,
           at.Location, at.CustomerSite, at.CustSite, at.VendorName, at.VehicleNumber, at.VehicleType, at.VehicleOwnershipType, at.TripType, at.DriverType, 
-          at.State as TripState, p.State as ProjectState, p.LocationsJSON,
+          p.State as ProjectState, p.LocationsJSON,
           COALESCE(at.ArrivalTimeAtHub, at.InTimeByCust, at.VehicleReportingAtHub, at.VehicleEntryInHub) as ArrivalTimeAtHub, 
           COALESCE(at.OutTimeFromHub, at.VehicleOutFromHubFinal, at.ReturnReportingTime, at.OutTimeFrom, at.VehicleReturnAtHub, at.VehicleOutFromHubForDelivery) as OutTimeFromHub, 
           at.OpeningKM, at.ClosingKM, at.ExtraKM, at.ExtraKMCost, at.VFreightFix, at.DCMCharges, at.TotalFreight,
@@ -141,9 +141,6 @@ const getVendorTrips = async (req, res) => {
                 if (!stateFilter)
                     return true;
                 const filterLower = stateFilter.toLowerCase();
-                if (t.TripState && t.TripState.toLowerCase() === filterLower) {
-                    return true;
-                }
                 if (t.vc_state) {
                     return t.vc_state.toLowerCase().includes(filterLower);
                 }
@@ -225,8 +222,8 @@ const getVendorTrips = async (req, res) => {
                     startOdometer: t.OpeningKM || 0,
                     endOdometer: t.ClosingKM || 0,
                     distance: (t.ClosingKM || 0) - (t.OpeningKM || 0),
-                    extraKm: Math.max(0, ((t.ClosingKM || 0) - (t.OpeningKM || 0)) - 100),
-                    extraKmRate: t.ExtraKM && t.ExtraKMCost ? (t.ExtraKMCost / t.ExtraKM).toFixed(2) : 0,
+                    extraKm: t.ExtraKM ? parseFloat(t.ExtraKM) : 0,
+                    extraKmRate: t.ExtraKM && t.ExtraKMCost ? (parseFloat(t.ExtraKMCost) / parseFloat(t.ExtraKM)).toFixed(2) : 0,
                     fixCost: t.VFreightFix || 0
                 };
             });
@@ -237,7 +234,7 @@ const getVendorTrips = async (req, res) => {
                 const cleanHub = rawHub.replace(/^[A-Z]{2}\s*-\s*/i, '').replace(/\s*\(Emp:.*?\)/gi, '').trim();
                 const loc = cleanHub || 'Unknown';
                 const dist = (parseFloat(t.ClosingKM) || 0) - (parseFloat(t.OpeningKM) || 0);
-                const tripExtraKm = Math.max(0, dist - 100);
+                const tripExtraKm = t.ExtraKM ? parseFloat(t.ExtraKM) : 0;
                 const vehComm = commercialRows.find((c) => {
                     const stateMatches = !stateFilter || !c.state || c.state.toLowerCase().includes(stateFilter.toLowerCase());
                     const vehMatches = !t.VehicleType || !c.type_of_vehicle || c.type_of_vehicle.toLowerCase() === t.VehicleType.toLowerCase();
@@ -328,7 +325,6 @@ const getVendorTrips = async (req, res) => {
                 if (!stateFilter)
                     return true;
                 const filterLower = stateFilter.toLowerCase();
-                // Primary: check the vendor_commercial state linked via vendor_commercial_id
                 if (t.vc_state) {
                     return t.vc_state.toLowerCase().includes(filterLower);
                 }
@@ -385,7 +381,7 @@ const getVendorTrips = async (req, res) => {
                 const rawHub = t.CustomerSite || t.Location || '';
                 const cleanHub = rawHub.replace(/^[A-Z]{2}\s*-\s*/i, '').replace(/\s*\(Emp:.*?\)/gi, '').trim();
                 const locMatch = rawHub.match(/^([A-Z]{2})\s*-\s*/i);
-                const cleanLoc = selectedState || (locMatch ? locMatch[1].toUpperCase() : (t.ProjectState || t.Location || 'UP'));
+                const cleanLoc = selectedState || (locMatch ? locMatch[1].toUpperCase() : (t.State || t.Location || 'UP'));
                 return {
                     id: index + 1,
                     date: t.date || '',
