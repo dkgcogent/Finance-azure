@@ -40,17 +40,18 @@ const mockData: InvoiceRecord[] = [
 ]
 
 const initialDetailedData = [
-  { gst: "DL", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0004", poNo: "", invDate: "30/4/2026", invMonth: "Apr-26", finYear: "2026-27", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-07-2026", custName: "Flipkart", proj: "Non Large", creditDays: "30", projWork: "Non Large Fix UP LM", loc: "Uttarpradesh", revHead: "Transportation Of Goods by Road", hsn: "996601", invTo: "Flipkart India FK GTA Non Trade", rcm: "No", custGst: "09AABCF8078M1ZZ", invAmt: "10,82,657.10", igst: "", sgst: "", cgst: "", totGst: "-", totInvAmt: "10,82,657.10", tds: "21,653.00", payable: "10,61,004.10", dueDate: "04-08-2026", outstanding: "10,55,699", payStatus: "Pending", payDays: "46238" },
-  { gst: "DL", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0005", poNo: "", invDate: "30/4/2026", invMonth: "Apr-26", finYear: "2026-27", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-07-2026", custName: "Flipkart", proj: "Non Large", creditDays: "30", projWork: "Non Large Fix UP FM", loc: "Uttarpradesh", revHead: "Transportation Of Goods by Road", hsn: "996819", invTo: "Instakart Services Private Limited", rcm: "No", custGst: "09AADCI8374D1ZE", invAmt: "1,59,620.77", igst: "28,732.00", sgst: "-", cgst: "-", totGst: "28,732.00", totInvAmt: "1,88,352.77", tds: "3,192.00", payable: "1,85,160.77", dueDate: "04-08-2026", outstanding: "1,85,161", payStatus: "Pending", payDays: "46238" },
-  { gst: "DL", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0006", poNo: "", invDate: "30/4/2026", invMonth: "Apr-26", finYear: "2026-27", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-07-2026", custName: "Flipkart", proj: "Non Large", creditDays: "30", projWork: "Non Large Fix Haryana FM", loc: "Haryana", revHead: "Transportation Of Goods by Road", hsn: "996819", invTo: "Instakart Services Private Limited", rcm: "No", custGst: "06AADCI8374D1ZK", invAmt: "53,225.00", igst: "9,581.00", sgst: "-", cgst: "-", totGst: "9,581.00", totInvAmt: "62,806.00", tds: "1,065.00", payable: "61,741.00", dueDate: "04-08-2026", outstanding: "61,741", payStatus: "Pending", payDays: "46238" },
-  { gst: "DL", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0007", poNo: "", invDate: "30/4/2026", invMonth: "Apr-26", finYear: "2026-27", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-07-2026", custName: "Flipkart", proj: "Non Large", creditDays: "30", projWork: "Non Large Fix Haryana LM", loc: "Haryana", revHead: "Transportation Of Goods by Road", hsn: "996819", invTo: "Instakart Services Private Limited", rcm: "No", custGst: "06AADCI8374D1ZK", invAmt: "31,478.00", igst: "5,666.00", sgst: "-", cgst: "-", totGst: "5,666.00", totInvAmt: "37,144.00", tds: "630.00", payable: "36,514.00", dueDate: "04-08-2026", outstanding: "36,514", payStatus: "Pending", payDays: "46238" },
-  { gst: "DL", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0008", poNo: "", invDate: "30/4/2026", invMonth: "Apr-26", finYear: "2026-27", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-07-2026", custName: "Flipkart", proj: "Non Large", creditDays: "30", projWork: "Non Large Adhoc UP LM", loc: "Uttarpradesh", revHead: "Transportation Of Goods by Road", hsn: "996601", invTo: "Flipkart India FK GTA Non Trade", rcm: "No", custGst: "09AABCF8078M1ZZ", invAmt: "4,04,460.00", igst: "-", sgst: "-", cgst: "-", totGst: "-", totInvAmt: "4,04,460.00", tds: "8,089.00", payable: "3,96,371.00", dueDate: "04-08-2026", outstanding: "3,94,389", payStatus: "Pending", payDays: "46238" },
-  { gst: "DL", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0014", poNo: "", invDate: "30/4/2026", invMonth: "Apr-26", finYear: "2026-27", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-07-2026", custName: "Bisleri", proj: "Bisleri", creditDays: "7", projWork: "Bisleri - Mundka", loc: "Delhi", revHead: "Transportation Of Goods by Road", hsn: "996819", invTo: "Bisleri International Pvt Ltd", rcm: "No", custGst: "07AACCA4355K1ZN", invAmt: "15,54,396.87", igst: "-", sgst: "1,39,896.00", cgst: "1,39,896.00", totGst: "2,79,792.00", totInvAmt: "18,34,188.87", tds: "31,088.00", payable: "18,03,100.87", dueDate: "12-07-2026", outstanding: "18,03,101", payStatus: "Pending", payDays: "46215" },
-  { gst: "DL", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0015", poNo: "5500174574", invDate: "05-08-2026", invMonth: "May-26", finYear: "2025-26", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-08-2026", custName: "Reliance", proj: "B2B", creditDays: "30", projWork: "B2B - Faridabad FLM", loc: "Haryana", revHead: "Transportation Of Goods by Road", hsn: "996819", invTo: "QWIK Supply Chain Private Ltd", rcm: "No", custGst: "06AAACF5232A1ZD", invAmt: "4,40,905.00", igst: "79,363.00", sgst: "-", cgst: "-", totGst: "79,363.00", totInvAmt: "5,20,268.00", tds: "8,818.00", payable: "5,11,450.00", dueDate: "04-09-2026", outstanding: "5,11,450", payStatus: "Pending", payDays: "46269" },
+  { gst: "DL", generationType: "System", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0004", poNo: "", invDate: "30/4/2026", invMonth: "Apr-26", finYear: "2026-27", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-07-2026", custName: "Flipkart", proj: "Non Large", creditDays: "30", projWork: "Non Large Fix UP LM", loc: "Uttarpradesh", revHead: "Transportation Of Goods by Road", hsn: "996601", invTo: "Flipkart India FK GTA Non Trade", rcm: "No", custGst: "09AABCF8078M1ZZ", invAmt: "10,82,657.10", igst: "", sgst: "", cgst: "", totGst: "-", totInvAmt: "10,82,657.10", tds: "21,653.00", payable: "10,61,004.10", dueDate: "04-08-2026", outstanding: "10,55,699", payStatus: "Pending", payDays: "46238" },
+  { gst: "DL", generationType: "System", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0005", poNo: "", invDate: "30/4/2026", invMonth: "Apr-26", finYear: "2026-27", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-07-2026", custName: "Flipkart", proj: "Non Large", creditDays: "30", projWork: "Non Large Fix UP FM", loc: "Uttarpradesh", revHead: "Transportation Of Goods by Road", hsn: "996819", invTo: "Instakart Services Private Limited", rcm: "No", custGst: "09AADCI8374D1ZE", invAmt: "1,59,620.77", igst: "28,732.00", sgst: "-", cgst: "-", totGst: "28,732.00", totInvAmt: "1,88,352.77", tds: "3,192.00", payable: "1,85,160.77", dueDate: "04-08-2026", outstanding: "1,85,161", payStatus: "Pending", payDays: "46238" },
+  { gst: "DL", generationType: "System", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0006", poNo: "", invDate: "30/4/2026", invMonth: "Apr-26", finYear: "2026-27", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-07-2026", custName: "Flipkart", proj: "Non Large", creditDays: "30", projWork: "Non Large Fix Haryana FM", loc: "Haryana", revHead: "Transportation Of Goods by Road", hsn: "996819", invTo: "Instakart Services Private Limited", rcm: "No", custGst: "06AADCI8374D1ZK", invAmt: "53,225.00", igst: "9,581.00", sgst: "-", cgst: "-", totGst: "9,581.00", totInvAmt: "62,806.00", tds: "1,065.00", payable: "61,741.00", dueDate: "04-08-2026", outstanding: "61,741", payStatus: "Pending", payDays: "46238" },
+  { gst: "DL", generationType: "System", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0007", poNo: "", invDate: "30/4/2026", invMonth: "Apr-26", finYear: "2026-27", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-07-2026", custName: "Flipkart", proj: "Non Large", creditDays: "30", projWork: "Non Large Fix Haryana LM", loc: "Haryana", revHead: "Transportation Of Goods by Road", hsn: "996819", invTo: "Instakart Services Private Limited", rcm: "No", custGst: "06AADCI8374D1ZK", invAmt: "31,478.00", igst: "5,666.00", sgst: "-", cgst: "-", totGst: "5,666.00", totInvAmt: "37,144.00", tds: "630.00", payable: "36,514.00", dueDate: "04-08-2026", outstanding: "36,514", payStatus: "Pending", payDays: "46238" },
+  { gst: "DL", generationType: "System", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0008", poNo: "", invDate: "30/4/2026", invMonth: "Apr-26", finYear: "2026-27", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-07-2026", custName: "Flipkart", proj: "Non Large", creditDays: "30", projWork: "Non Large Adhoc UP LM", loc: "Uttarpradesh", revHead: "Transportation Of Goods by Road", hsn: "996601", invTo: "Flipkart India FK GTA Non Trade", rcm: "No", custGst: "09AABCF8078M1ZZ", invAmt: "4,04,460.00", igst: "-", sgst: "-", cgst: "-", totGst: "-", totInvAmt: "4,04,460.00", tds: "8,089.00", payable: "3,96,371.00", dueDate: "04-08-2026", outstanding: "3,94,389", payStatus: "Pending", payDays: "46238" },
+  { gst: "DL", generationType: "System", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0014", poNo: "", invDate: "30/4/2026", invMonth: "Apr-26", finYear: "2026-27", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-07-2026", custName: "Bisleri", proj: "Bisleri", creditDays: "7", projWork: "Bisleri - Mundka", loc: "Delhi", revHead: "Transportation Of Goods by Road", hsn: "996819", invTo: "Bisleri International Pvt Ltd", rcm: "No", custGst: "07AACCA4355K1ZN", invAmt: "15,54,396.87", igst: "-", sgst: "1,39,896.00", cgst: "1,39,896.00", totGst: "2,79,792.00", totInvAmt: "18,34,188.87", tds: "31,088.00", payable: "18,03,100.87", dueDate: "12-07-2026", outstanding: "18,03,101", payStatus: "Pending", payDays: "46215" },
+  { gst: "DL", generationType: "System", gstNo: "07AAFCC4715N1ZG", invNo: "CLPL/26-27/0015", poNo: "5500174574", invDate: "05-08-2026", invMonth: "May-26", finYear: "2025-26", svcMonth: "Apr-26", jmsStatus: "", jmsNum: "", jmsDate: "", subDate: "05-08-2026", custName: "Reliance", proj: "B2B", creditDays: "30", projWork: "B2B - Faridabad FLM", loc: "Haryana", revHead: "Transportation Of Goods by Road", hsn: "996819", invTo: "QWIK Supply Chain Private Ltd", rcm: "No", custGst: "06AAACF5232A1ZD", invAmt: "4,40,905.00", igst: "79,363.00", sgst: "-", cgst: "-", totGst: "79,363.00", totInvAmt: "5,20,268.00", tds: "8,818.00", payable: "5,11,450.00", dueDate: "04-09-2026", outstanding: "5,11,450", payStatus: "Pending", payDays: "46269" },
 ];
 
 const columnsConfig = [
   { key: 'gst', label: 'From GST', bg: 'bg-[#e6b8b7]', initialWidth: 100, isSticky: true },
+  { key: 'generationType', label: 'Generated', bg: 'bg-[#e6b8b7]', initialWidth: 110, isSticky: true },
   { key: 'gstNo', label: 'From GST No.', bg: 'bg-[#e6b8b7]', initialWidth: 150, isSticky: true },
   { key: 'invNo', label: 'Invoice No', bg: 'bg-[#e6b8b7]', initialWidth: 150, isSticky: true },
   { key: 'poNo', label: 'Po No', bg: 'bg-[#e6b8b7]', initialWidth: 120 },
@@ -148,6 +149,7 @@ export default function GlobalInvoiceMaster() {
       isStandalone: true,
       type: "Customer",
       gst: "DL",
+      generationType: "Manual",
       gstNo: "07AAFCC4715N1ZG",
       invNo: "",
       poNo: "",
@@ -283,11 +285,18 @@ export default function GlobalInvoiceMaster() {
 
   const filteredData = mockData.filter(d => filterType === "All" || d.type === filterType)
 
-
-  // Calculate sticky offsets
-  const left0 = 0;
-  const left1 = left0 + getColWidth('gst', 100);
-  const left2 = left1 + getColWidth('gstNo', 150);
+  // Calculate dynamic sticky offsets based on columnsConfig order
+  const stickyOffsets = useMemo(() => {
+    let acc = 0;
+    const offsets: Record<string, number> = {};
+    columnsConfig.forEach(col => {
+      if (col.isSticky) {
+        offsets[col.key] = acc;
+        acc += getColWidth(col.key, col.initialWidth);
+      }
+    });
+    return offsets;
+  }, [colWidths]);
 
   return (
     <div className="flex-1 space-y-6 pb-8 relative">
@@ -337,13 +346,10 @@ export default function GlobalInvoiceMaster() {
                 <table className="w-full text-xs text-center border-collapse min-w-max relative table-fixed">
                   <thead className="text-black sticky top-0 z-20">
                     <tr>
-                      {columnsConfig.map((col, index) => {
+                      {columnsConfig.map((col) => {
                         const width = getColWidth(col.key, col.initialWidth);
-                        const isSticky = col.isSticky;
-                        let leftOffset = 'auto';
-                        if (index === 0) leftOffset = `${left0}px`;
-                        else if (index === 1) leftOffset = `${left1}px`;
-                        else if (index === 2) leftOffset = `${left2}px`;
+                        const isSticky = !!col.isSticky;
+                        const leftOffset = isSticky ? `${stickyOffsets[col.key] ?? 0}px` : undefined;
                         
                         return (
                           <th 
@@ -353,7 +359,7 @@ export default function GlobalInvoiceMaster() {
                               width: `${width}px`, 
                               minWidth: `${width}px`, 
                               maxWidth: `${width}px`,
-                              left: leftOffset !== 'auto' ? leftOffset : undefined 
+                              left: leftOffset 
                             }}
                           >
                             <div className="whitespace-pre-wrap">{col.label}</div>
@@ -372,16 +378,13 @@ export default function GlobalInvoiceMaster() {
 
                       return (
                         <tr key={row.id || i} className={`hover:bg-slate-50 group ${isRowStandalone ? 'bg-amber-50/30' : ''}`}>
-                          {columnsConfig.map((col, index) => {
+                          {columnsConfig.map((col) => {
                              const width = getColWidth(col.key, col.initialWidth);
-                             const isSticky = col.isSticky;
-                             let leftOffset = 'auto';
-                             if (index === 0) leftOffset = `${left0}px`;
-                             else if (index === 1) leftOffset = `${left1}px`;
-                             else if (index === 2) leftOffset = `${left2}px`;
+                             const isSticky = !!col.isSticky;
+                             const leftOffset = isSticky ? `${stickyOffsets[col.key] ?? 0}px` : undefined;
 
-                             const isCalculatedCol = ['totPay', 'outstanding'].includes(col.key);
-                             const isEditable = isRowStandalone ? !isCalculatedCol : (col.bg !== 'bg-[#e6b8b7]' && !isCalculatedCol);
+                             const isCalculatedCol = ['totPay', 'outstanding', 'generationType'].includes(col.key);
+                             const isEditable = col.key === 'generationType' ? false : (isRowStandalone ? !isCalculatedCol : (col.bg !== 'bg-[#e6b8b7]' && !isCalculatedCol));
 
                              const rawVal = row[col.key];
                              const isNumericCol = [
@@ -398,6 +401,27 @@ export default function GlobalInvoiceMaster() {
                                }
                              }
 
+                             // Render non-editable badge for generated type
+                             if (col.key === 'generationType') {
+                               const isSys = displayVal === 'System' || displayVal === 'System Generated' || (!isRowStandalone && !displayVal);
+                               return (
+                                 <td 
+                                   key={col.key} 
+                                   className={`p-2 border border-slate-300 outline-none text-center ${col.cellClasses || ''} ${isSticky ? 'sticky z-10 bg-white group-hover:bg-slate-50' : ''} cursor-default bg-slate-50/50`}
+                                   style={{
+                                     width: `${width}px`, 
+                                     minWidth: `${width}px`, 
+                                     maxWidth: `${width}px`,
+                                     left: leftOffset 
+                                   }}
+                                 >
+                                   <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${isSys ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
+                                     {isSys ? 'System' : 'Manual'}
+                                   </span>
+                                 </td>
+                               );
+                             }
+
                              return (
                               <td 
                                 key={col.key} 
@@ -406,7 +430,7 @@ export default function GlobalInvoiceMaster() {
                                   width: `${width}px`, 
                                   minWidth: `${width}px`, 
                                   maxWidth: `${width}px`,
-                                  left: leftOffset !== 'auto' ? leftOffset : undefined 
+                                  left: leftOffset 
                                 }}
                                 contentEditable={isEditable}
                                 suppressContentEditableWarning={true}
