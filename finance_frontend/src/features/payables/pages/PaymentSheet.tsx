@@ -337,7 +337,7 @@ export default function PaymentSheet() {
               Clear Dates
             </Button>
           )}
-          {/* Month and Year Selectors commented out as requested
+          {/* Month and Year Selectors */}
           <select 
             value={month} 
             onChange={(e) => { setMonth(Number(e.target.value)); setFromDate(''); setToDate(''); setSelectedDate(''); }}
@@ -356,7 +356,6 @@ export default function PaymentSheet() {
               <option key={y} value={y}>{y}</option>
             ))}
           </select>
-          */}
 
           <div className="relative ml-2">
             <Button variant="outline" onClick={togglePrintMenu}>
