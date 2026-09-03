@@ -19,6 +19,51 @@ import {
 import { apiClient } from "@/lib/api"
 import { exportTableToExcel } from "@/lib/excelExportHelper"
 
+export const parseDateHelper = (val: any): Date | null => {
+  if (!val) return null;
+  if (val instanceof Date) return isNaN(val.getTime()) ? null : val;
+  const s = String(val).trim();
+  if (!s) return null;
+
+  const dmyMatch = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+  if (dmyMatch) {
+    const day = parseInt(dmyMatch[1], 10);
+    const month = parseInt(dmyMatch[2], 10) - 1;
+    const year = parseInt(dmyMatch[3], 10);
+    const d = new Date(year, month, day);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const ymdMatch = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+  if (ymdMatch) {
+    const year = parseInt(ymdMatch[1], 10);
+    const month = parseInt(ymdMatch[2], 10) - 1;
+    const day = parseInt(ymdMatch[3], 10);
+    const d = new Date(year, month, day);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  const d = new Date(s);
+  return isNaN(d.getTime()) ? null : d;
+};
+
+export const calculateDaysDiff = (dueDateVal: any, pay3DateVal: any): string => {
+  const d1 = parseDateHelper(dueDateVal);
+  const d2 = parseDateHelper(pay3DateVal);
+  if (!d1 || !d2) return "";
+  const utc1 = Date.UTC(d1.getFullYear(), d1.getMonth(), d1.getDate());
+  const utc2 = Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate());
+  const diffDays = Math.round((utc1 - utc2) / (1000 * 60 * 60 * 24));
+  return String(diffDays);
+};
+
+export const getPayDelayStatus = (payDaysVal: any): string => {
+  if (payDaysVal === null || payDaysVal === undefined || String(payDaysVal).trim() === '') return "";
+  const num = Number(payDaysVal);
+  if (isNaN(num)) return "";
+  return num < 0 ? "Delay" : "Ontime";
+};
+
 type InvoiceRecord = {
   id: string
   invoiceNumber: string
@@ -383,7 +428,7 @@ export default function GlobalInvoiceMaster() {
                              const isSticky = !!col.isSticky;
                              const leftOffset = isSticky ? `${stickyOffsets[col.key] ?? 0}px` : undefined;
 
-                             const isCalculatedCol = ['totPay', 'outstanding', 'generationType'].includes(col.key);
+                             const isCalculatedCol = ['totPay', 'outstanding', 'generationType', 'payDays', 'payDelay'].includes(col.key);
                              const isEditable = col.key === 'generationType' ? false : (isRowStandalone ? !isCalculatedCol : (col.bg !== 'bg-[#e6b8b7]' && !isCalculatedCol));
 
                              const rawVal = row[col.key];
@@ -417,6 +462,27 @@ export default function GlobalInvoiceMaster() {
                                  >
                                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${isSys ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
                                      {isSys ? 'System' : 'Manual'}
+                                   </span>
+                                 </td>
+                               );
+                             }
+
+                             // Render badge for payDelay (Ontime / Delay)
+                             if (col.key === 'payDelay' && displayVal) {
+                               const isDelay = displayVal === 'Delay';
+                               return (
+                                 <td 
+                                   key={col.key} 
+                                   className={`p-2 border border-slate-300 outline-none text-center ${col.cellClasses || ''} ${isSticky ? 'sticky z-10 bg-white group-hover:bg-slate-50' : ''} cursor-default bg-slate-50/50`}
+                                   style={{
+                                     width: `${width}px`, 
+                                     minWidth: `${width}px`, 
+                                     maxWidth: `${width}px`,
+                                     left: leftOffset 
+                                   }}
+                                 >
+                                   <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${isDelay ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-emerald-100 text-emerald-800 border border-emerald-200'}`}>
+                                     {displayVal}
                                    </span>
                                  </td>
                                );
@@ -498,6 +564,10 @@ export default function GlobalInvoiceMaster() {
                                   } else {
                                     updatedRow.payStatus = "Pending";
                                   }
+
+                                  const payDays = calculateDaysDiff(updatedRow.dueDate, updatedRow.pay3Date);
+                                  updatedRow.payDays = payDays;
+                                  updatedRow.payDelay = getPayDelayStatus(payDays);
 
                                   newRows[i] = updatedRow;
                                   setMasterRows(newRows);
