@@ -825,6 +825,53 @@ exports.invoiceService = {
             fallbackCustomerAddress
         };
     },
+    calculateDaysDiff: (dueDateVal, pay3DateVal) => {
+        if (!dueDateVal || !pay3DateVal)
+            return "";
+        const parseDateHelper = (val) => {
+            if (!val)
+                return null;
+            if (val instanceof Date)
+                return isNaN(val.getTime()) ? null : val;
+            const s = String(val).trim();
+            if (!s)
+                return null;
+            const dmyMatch = s.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})$/);
+            if (dmyMatch) {
+                const day = parseInt(dmyMatch[1], 10);
+                const month = parseInt(dmyMatch[2], 10) - 1;
+                const year = parseInt(dmyMatch[3], 10);
+                const d = new Date(year, month, day);
+                return isNaN(d.getTime()) ? null : d;
+            }
+            const ymdMatch = s.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+            if (ymdMatch) {
+                const year = parseInt(ymdMatch[1], 10);
+                const month = parseInt(ymdMatch[2], 10) - 1;
+                const day = parseInt(ymdMatch[3], 10);
+                const d = new Date(year, month, day);
+                return isNaN(d.getTime()) ? null : d;
+            }
+            const d = new Date(s);
+            return isNaN(d.getTime()) ? null : d;
+        };
+        const d1 = parseDateHelper(dueDateVal);
+        const d2 = parseDateHelper(pay3DateVal);
+        if (!d1 || !d2)
+            return "";
+        const utc1 = Date.UTC(d1.getFullYear(), d1.getMonth(), d1.getDate());
+        const utc2 = Date.UTC(d2.getFullYear(), d2.getMonth(), d2.getDate());
+        const diffDays = Math.round((utc1 - utc2) / (1000 * 60 * 60 * 24));
+        return String(diffDays);
+    },
+    getPayDelayStatus: (payDaysVal) => {
+        if (payDaysVal === null || payDaysVal === undefined || String(payDaysVal).trim() === '')
+            return "";
+        const num = Number(payDaysVal);
+        if (isNaN(num))
+            return "";
+        return num < 0 ? "Delay" : "Ontime";
+    },
     getGlobalInvoiceMaster: async () => {
         // Ensure customer_cndn_notes columns exist on database
         try {
@@ -1051,7 +1098,7 @@ exports.invoiceService = {
                 pay2Date: row.m_pay2Date || billPayments[1]?.PaymentDate || "",
                 pay2Adv: row.m_pay2Adv || billPayments[1]?.PaymentReference || "",
                 pay3Amt: row.m_pay3Amt !== null && row.m_pay3Amt !== undefined ? row.m_pay3Amt : (billPayments[2]?.PaymentAmount || 0),
-                pay3Date: row.m_pay3Date || billPayments[3]?.PaymentDate || "",
+                pay3Date: row.m_pay3Date || billPayments[2]?.PaymentDate || "",
                 pay3Adv: row.m_pay3Adv || billPayments[2]?.PaymentReference || "",
                 gstPayAmt: row.m_gstPayAmt || 0,
                 gstPayDate: row.m_gstPayDate || "",
@@ -1066,8 +1113,14 @@ exports.invoiceService = {
                 cnTotAmt: cnTotAmt,
                 outstanding: calculatedOutstanding,
                 payStatus: row.m_payStatus || (calculatedOutstanding <= 0 ? "Fully Paid" : calculatedTotPay > 0 ? "Partially Paid" : "Pending"),
-                payDays: "",
-                payDelay: "",
+                payDays: (() => {
+                    const days = exports.invoiceService.calculateDaysDiff(row.dueDate ? new Date(row.dueDate).toISOString().split('T')[0] : "", row.m_pay3Date || billPayments[2]?.PaymentDate || "");
+                    return days;
+                })(),
+                payDelay: (() => {
+                    const days = exports.invoiceService.calculateDaysDiff(row.dueDate ? new Date(row.dueDate).toISOString().split('T')[0] : "", row.m_pay3Date || billPayments[2]?.PaymentDate || "");
+                    return exports.invoiceService.getPayDelayStatus(days);
+                })(),
                 netCredit: "30"
             };
         });
@@ -1163,8 +1216,8 @@ exports.invoiceService = {
                     cnTotAmt: cnTotAmt,
                     outstanding: outstanding,
                     payStatus: r.payStatus || (outstanding <= 0 ? "Fully Paid" : totPay > 0 ? "Partially Paid" : "Pending"),
-                    payDays: r.payDays || "",
-                    payDelay: r.payDelay || "",
+                    payDays: exports.invoiceService.calculateDaysDiff(r.dueDate, r.pay3Date) || r.payDays || "",
+                    payDelay: exports.invoiceService.getPayDelayStatus(exports.invoiceService.calculateDaysDiff(r.dueDate, r.pay3Date) || r.payDays) || r.payDelay || "",
                     netCredit: r.netCredit || "30"
                 };
             });
@@ -1195,6 +1248,8 @@ exports.invoiceService = {
                 const p3 = parseNum(row.pay3Amt);
                 const gstP = parseNum(row.gstPayAmt);
                 const calculatedTotPay = Number((p1 + p2 + p3 + gstP).toFixed(2));
+                const calculatedPayDays = exports.invoiceService.calculateDaysDiff(row.dueDate, row.pay3Date) || row.payDays || null;
+                const calculatedPayDelay = exports.invoiceService.getPayDelayStatus(calculatedPayDays) || row.payDelay || null;
                 if (isStandalone) {
                     const invAmt = parseNum(row.invAmt);
                     const igst = parseNum(row.igst);
@@ -1247,7 +1302,7 @@ exports.invoiceService = {
                         row.pay3Amt || null, row.pay3Date || null, row.pay3Adv || null,
                         row.gstPayAmt || null, row.gstPayDate || null, calculatedTotPay,
                         row.cnNo || null, cnAmt, cnIgst, cnCgst, cnSgst, cnTotGst, cnTotAmt,
-                        outstanding, row.payStatus || null, row.payDays || null, row.payDelay || null, row.netCredit || '30'
+                        outstanding, row.payStatus || null, calculatedPayDays, calculatedPayDelay, row.netCredit || '30'
                     ];
                     await connection.query(q, values);
                 }
@@ -1256,8 +1311,8 @@ exports.invoiceService = {
             INSERT INTO global_invoice_manual_data (
               invoice_id, jmsStatus, jmsNum, jmsDate, subDate, custName, proj, projWork, loc,
               revHead, hsn, invTo, rcm, pay1Amt, pay1Date, pay1Adv, pay2Amt, pay2Date, pay2Adv,
-              pay3Amt, pay3Date, pay3Adv, gstPayAmt, gstPayDate, totPay, payStatus
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              pay3Amt, pay3Date, pay3Adv, gstPayAmt, gstPayDate, totPay, payStatus, payDays, payDelay
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE 
               jmsStatus=VALUES(jmsStatus), jmsNum=VALUES(jmsNum), jmsDate=VALUES(jmsDate), subDate=VALUES(subDate),
               custName=VALUES(custName), proj=VALUES(proj), projWork=VALUES(projWork), loc=VALUES(loc),
@@ -1265,7 +1320,8 @@ exports.invoiceService = {
               pay1Amt=VALUES(pay1Amt), pay1Date=VALUES(pay1Date), pay1Adv=VALUES(pay1Adv),
               pay2Amt=VALUES(pay2Amt), pay2Date=VALUES(pay2Date), pay2Adv=VALUES(pay2Adv),
               pay3Amt=VALUES(pay3Amt), pay3Date=VALUES(pay3Date), pay3Adv=VALUES(pay3Adv),
-              gstPayAmt=VALUES(gstPayAmt), gstPayDate=VALUES(gstPayDate), totPay=VALUES(totPay), payStatus=VALUES(payStatus)
+              gstPayAmt=VALUES(gstPayAmt), gstPayDate=VALUES(gstPayDate), totPay=VALUES(totPay), payStatus=VALUES(payStatus),
+              payDays=VALUES(payDays), payDelay=VALUES(payDelay)
           `;
                     const values = [
                         row.id,
@@ -1275,7 +1331,8 @@ exports.invoiceService = {
                         row.pay1Amt || null, row.pay1Date || null, row.pay1Adv || null,
                         row.pay2Amt || null, row.pay2Date || null, row.pay2Adv || null,
                         row.pay3Amt || null, row.pay3Date || null, row.pay3Adv || null,
-                        row.gstPayAmt || null, row.gstPayDate || null, calculatedTotPay, row.payStatus || null
+                        row.gstPayAmt || null, row.gstPayDate || null, calculatedTotPay, row.payStatus || null,
+                        calculatedPayDays, calculatedPayDelay
                     ];
                     await connection.query(q, values);
                 }
