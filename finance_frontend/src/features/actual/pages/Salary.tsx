@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Modal } from "@/components/ui/modal"
 import { Plus, Save, Trash2, Download, Loader2 } from "lucide-react"
+import { exportSalaryExcel } from "@/lib/excelExportHelper"
 
 type ActualValue = string | null;
 type MonthKey = 'apr' | 'may' | 'jun' | 'jul' | 'aug' | 'sep' | 'oct' | 'nov' | 'dec' | 'jan' | 'feb' | 'mar';
@@ -279,6 +280,45 @@ export default function Salary() {
 
   const dynamicHeaders = getMonthHeaders(selectedYear);
 
+  const handleExport = async () => {
+    if (!currentYearData || currentYearData.length === 0) return;
+
+    const exportRows = currentYearData.map((row, idx) => {
+      const months = MONTHS.map((m) => {
+        const val = row[m];
+        if (val === null || val === undefined || val === "-") return 0;
+        return parseFormattedNumber(val);
+      });
+
+      const totalVal = row.total === null || row.total === undefined || row.total === "-" ? 0 : parseFormattedNumber(row.total);
+
+      return {
+        srNo: idx + 1,
+        head: row.head,
+        customer: row.customer,
+        project: row.project,
+        location: row.location,
+        designation: row.designation,
+        nameOfEmployee: row.nameOfEmployee,
+        months,
+        total: totalVal,
+      };
+    });
+
+    const totalMonths = MONTHS.map((m) => totals[m] || 0);
+
+    await exportSalaryExcel({
+      sheetName: `Salary ${selectedYear}`,
+      monthHeaders: dynamicHeaders,
+      rows: exportRows,
+      totals: {
+        months: totalMonths,
+        total: totals.total || 0,
+      },
+      fileName: `Salary_actual_${selectedYear}.xlsx`,
+    });
+  };
+
   const srNoLeft = 0;
   const headLeft = srNoLeft + (colWidths.srNo || 45);
   const customerLeft = headLeft + (colWidths.head || 80);
@@ -297,22 +337,7 @@ export default function Salary() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <Button variant="outline" size="sm" className="h-8" onClick={() => {
-            import('xlsx').then(XLSX => {
-              const table = document.getElementById('export-table');
-              if (table) {
-                const clone = table.cloneNode(true) as Element;
-                const inputs = clone.querySelectorAll('input');
-                inputs.forEach(input => {
-                  const val = input.value;
-                  const parent = input.parentElement;
-                  if (parent) parent.textContent = val || '-';
-                });
-                const wb = XLSX.utils.table_to_book(clone, { raw: true });
-                XLSX.writeFile(wb, `Salary_actual_${selectedYear}.xlsx`);
-              }
-            });
-          }}>
+          <Button variant="outline" size="sm" className="h-8" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>

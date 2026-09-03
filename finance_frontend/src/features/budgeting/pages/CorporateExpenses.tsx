@@ -92,6 +92,8 @@ const getEmptyMonths = () => ({
 });
 
 
+import { exportFinancialSummaryExcel } from "@/lib/excelExportHelper";
+
 export default function CorporateExpenses() {
   const { financialYear: selectedYear, setFinancialYear: setSelectedYear } = useGlobalStore();
   const [data, setData] = useState<ExpenseRow[]>([]);
@@ -272,6 +274,45 @@ export default function CorporateExpenses() {
 
   const dynamicHeaders = getMonthHeaders(selectedYear);
 
+  const handleExport = async () => {
+    if (!currentYearData || currentYearData.length === 0) return;
+
+    const exportRows = currentYearData.map((row) => {
+      const values = MONTHS.map((m) => {
+        const val = row[m];
+        if (val === null || val === undefined || val === "-") return 0;
+        return parseFormattedNumber(val);
+      });
+
+      const totalVal = row.total === null || row.total === undefined || row.total === "-" ? 0 : parseFormattedNumber(row.total);
+
+      return {
+        name: row.head,
+        isBold: !!row.isYellow,
+        isYellow: !!row.isYellow,
+        values,
+        total: totalVal,
+      };
+    });
+
+    // Add Grand Total row
+    const grandTotalValues = MONTHS.map((m) => totals[m] || 0);
+    exportRows.push({
+      name: "Grand Total",
+      isBold: true,
+      isYellow: true,
+      values: grandTotalValues,
+      total: totals.total || 0,
+    });
+
+    await exportFinancialSummaryExcel({
+      sheetName: `Corporate Expenses ${selectedYear}`,
+      headers: dynamicHeaders,
+      rows: exportRows,
+      fileName: `CorporateExpenses_budgeting_${selectedYear}.xlsx`,
+    });
+  };
+
   return (
     <div className="flex-1 space-y-6 pb-8">
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -282,22 +323,7 @@ export default function CorporateExpenses() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <Button variant="outline" size="sm" className="h-8" onClick={() => {
-            import('xlsx').then(XLSX => {
-              const table = document.getElementById('export-table');
-              if (table) {
-                const clone = table.cloneNode(true) as Element;
-                const inputs = clone.querySelectorAll('input');
-                inputs.forEach(input => {
-                  const val = input.value;
-                  const parent = input.parentElement;
-                  if (parent) parent.textContent = val || '-';
-                });
-                const wb = XLSX.utils.table_to_book(clone, { raw: true });
-                XLSX.writeFile(wb, `CorporateExpenses_budgeting_${selectedYear}.xlsx`);
-              }
-            });
-          }}>
+          <Button variant="outline" size="sm" className="h-8" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>

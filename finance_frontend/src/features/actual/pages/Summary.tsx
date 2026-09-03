@@ -39,12 +39,65 @@ const ROWS: SummaryRow[] = [
 import { useActualSummary } from "../hooks/useActualSummary"
 import { useAvailableYearsQuery } from "../hooks/useActualRevenue"
 import { useGlobalStore } from "@/store/useGlobalStore";
+import { exportFinancialSummaryExcel } from "@/lib/excelExportHelper";
 
 export default function Summary() {
   const { financialYear: selectedYear, setFinancialYear: setSelectedYear } = useGlobalStore();
   const { data: serverAvailableYears } = useAvailableYearsQuery();
   const availableYears = serverAvailableYears && serverAvailableYears.length > 0 ? serverAvailableYears : [selectedYear];
   const { data, isLoading, isError } = useActualSummary(selectedYear);
+
+  const handleExport = async () => {
+    if (!data?.resultRows || !data.headers) return;
+
+    const exportRows = ROWS.map((row) => {
+      if (row.isDivider) {
+        return {
+          name: '',
+          isDivider: true,
+          values: [],
+          total: '',
+        };
+      }
+
+      const values = data.headers.map((_, i) => {
+        const val = data.resultRows?.[row.name]?.[i] ?? 0;
+        return row.isPercent ? Number(val.toFixed(2)) : val;
+      });
+
+      let total: number | string = 0;
+      if (row.isPercent) {
+        const revTotal = data.resultRows['Revenue']?.reduce((a, b) => a + b, 0) || 0;
+        const relatedRowName = row.name.replace(' %Age', '').replace(' % Age', '');
+        let targetTotal = 0;
+        if (relatedRowName === 'Gross Margin') targetTotal = data.resultRows['Gross Margin']?.reduce((a, b) => a + b, 0) || 0;
+        else if (relatedRowName === 'Corporate Expenses') targetTotal = data.resultRows['Total Corporate Expenses']?.reduce((a, b) => a + b, 0) || 0;
+        else if (relatedRowName === 'Total Bank Interest / Expenses') targetTotal = data.resultRows['Total Bank Interest / Expenses']?.reduce((a, b) => a + b, 0) || 0;
+        else if (relatedRowName === 'EBITA') targetTotal = data.resultRows['EBITA']?.reduce((a, b) => a + b, 0) || 0;
+        else if (relatedRowName === 'NP') targetTotal = data.resultRows['NP']?.reduce((a, b) => a + b, 0) || 0;
+
+        const pct = revTotal > 0 ? (targetTotal / revTotal) * 100 : 0;
+        total = Number(pct.toFixed(2));
+      } else {
+        total = data.resultRows[row.name]?.reduce((a, b) => a + b, 0) || 0;
+      }
+
+      return {
+        name: row.name,
+        isBold: row.isBold,
+        isPercent: row.isPercent,
+        values,
+        total,
+      };
+    });
+
+    await exportFinancialSummaryExcel({
+      sheetName: `Summary ${selectedYear}`,
+      headers: data.headers,
+      rows: exportRows,
+      fileName: `Actual_Summary_${selectedYear}.xlsx`,
+    });
+  };
 
   if (isLoading) {
     return (
@@ -78,15 +131,7 @@ export default function Summary() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <Button variant="outline" size="sm" className="h-8" onClick={() => {
-            import('xlsx').then(XLSX => {
-              const table = document.getElementById('summary-table');
-              if (table) {
-                const wb = XLSX.utils.table_to_book(table, { raw: true });
-                XLSX.writeFile(wb, `Actual_Summary_${selectedYear}.xlsx`);
-              }
-            });
-          }}>
+          <Button variant="outline" size="sm" className="h-8" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>

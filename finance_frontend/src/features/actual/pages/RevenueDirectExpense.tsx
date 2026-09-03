@@ -64,6 +64,7 @@ const getEmptyMonths = () => ({
 });
 
 import { useGlobalStore } from "@/store/useGlobalStore";
+import { exportRevenueDirectExpenseExcel } from "@/lib/excelExportHelper";
 
 export default function RevenueDirectExpense() {
   const { financialYear: selectedYear, setFinancialYear: setSelectedYear } = useGlobalStore();
@@ -368,6 +369,71 @@ export default function RevenueDirectExpense() {
 
   const dynamicHeaders = getMonthHeaders(selectedYear);
 
+  const handleExport = async () => {
+    if (!currentYearData || currentYearData.length === 0) return;
+
+    const exportRows = currentYearData.map((row, i) => {
+      const isPct = row.head.includes("%");
+      const months = MONTHS.map((m) => {
+        const val = row[m];
+        if (val === null || val === undefined || val === "-") return 0;
+        const num = parseFormattedNumber(val);
+        return isPct ? Number(num.toFixed(2)) : num;
+      });
+
+      const totalVal = row.total === null || row.total === undefined || row.total === "-" ? 0 : parseFormattedNumber(row.total);
+      const formattedTotal = isPct ? Number(totalVal.toFixed(2)) : totalVal;
+
+      return {
+        customer: row.customer,
+        project: row.project,
+        location: row.location,
+        head: row.head,
+        months,
+        total: formattedTotal,
+        isYellow: row.isYellow,
+        isGroupEnd: i % 5 === 4,
+      };
+    });
+
+    const totalHeads = [
+      "Revenue",
+      "Direct Expense % Age",
+      "Direct Expenses",
+      "Gross Margin",
+      "Gross Margin %Age",
+    ];
+
+    const exportTotals = totalHeads.map((head) => {
+      const isYellow = head !== "Direct Expense % Age";
+      const isPct = head.includes("%");
+      const totalData = totals[head as keyof typeof totals];
+
+      const months = MONTHS.map((m) => {
+        const val = totalData?.[m] ?? 0;
+        return isPct ? Number(val.toFixed(2)) : val;
+      });
+
+      const totalVal = totalData?.total ?? 0;
+      const formattedTotal = isPct ? Number(totalVal.toFixed(2)) : totalVal;
+
+      return {
+        head,
+        months,
+        total: formattedTotal,
+        isYellow,
+      };
+    });
+
+    await exportRevenueDirectExpenseExcel({
+      sheetName: `Rev & Direct Exp ${selectedYear}`,
+      monthHeaders: dynamicHeaders,
+      rows: exportRows,
+      totals: exportTotals,
+      fileName: `RevenueDirectExpense_Actual_${selectedYear}.xlsx`,
+    });
+  };
+
   return (
     <div className="flex-1 space-y-6 pb-8">
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
@@ -378,22 +444,7 @@ export default function RevenueDirectExpense() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <Button variant="outline" size="sm" className="h-8" onClick={() => {
-            import('xlsx').then(XLSX => {
-              const table = document.getElementById('actual-table');
-              if (table) {
-                const clone = table.cloneNode(true) as HTMLTableElement;
-                const inputs = clone.querySelectorAll('input');
-                inputs.forEach(input => {
-                  const val = input.value;
-                  const parent = input.parentElement;
-                  if (parent) parent.textContent = val || '-';
-                });
-                const wb = XLSX.utils.table_to_book(clone, { raw: true });
-                XLSX.writeFile(wb, `RevenueDirectExpense_Actual_${selectedYear}.xlsx`);
-              }
-            });
-          }}>
+          <Button variant="outline" size="sm" className="h-8" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
             Export
           </Button>
