@@ -97,6 +97,7 @@ export interface VendorInvoiceExcelParams {
   vendorName?: string;
   vendorAddress?: string;
   vendorGSTIN?: string;
+  addressOfCompany?: string;
   costCode?: string;
   totalAmount: number;
   bankDetails?: {
@@ -122,6 +123,7 @@ export async function generateVendorInvoiceExcel(params: VendorInvoiceExcelParam
     vendorName = "Vendor Company Name and Vendor Name",
     vendorAddress = "Vendor Address and Contact Details",
     vendorGSTIN = "",
+    addressOfCompany = "",
     costCode = "4477",
     totalAmount,
     bankDetails = {},
@@ -316,16 +318,34 @@ export async function generateVendorInvoiceExcel(params: VendorInvoiceExcelParam
   aln(ws, 8, 5, "left", "middle");
 
   // R9-R14: Addresses for Cogent Logistics Private Limited
+  const defaultAddrLine1 = "201C/6, 2nd Floor, D-21 Corporate Park,";
+  const defaultAddrLine2 = "Sector 21, Dwarka, New Delhi - 110077";
+
+  let addrL1 = defaultAddrLine1;
+  let addrL2 = defaultAddrLine2;
+
+  if (addressOfCompany && addressOfCompany.trim().length > 0) {
+    const rawParts = addressOfCompany.split(',').map(s => s.trim()).filter(Boolean);
+    if (rawParts.length >= 4) {
+      const half = Math.ceil(rawParts.length / 2);
+      addrL1 = rawParts.slice(0, half).join(', ') + ',';
+      addrL2 = rawParts.slice(half).join(', ');
+    } else {
+      addrL1 = addressOfCompany.trim();
+      addrL2 = "";
+    }
+  }
+
   const leftLines = [
     "Cogent Logistics Private Limited",
-    "201C/6, 2nd Floor, D-21 Corporate Park,",
-    "Sector 21, Dwarka, New Delhi - 110077",
+    addrL1,
+    addrL2,
     "", "", "",
   ];
   const rightLines = [
     "Cogent Logistics Private Limited",
-    "201C/6, 2nd Floor, D-21 Corporate Park,",
-    "Sector 21, Dwarka, New Delhi - 110077",
+    addrL1,
+    addrL2,
     "", "", "",
   ];
 

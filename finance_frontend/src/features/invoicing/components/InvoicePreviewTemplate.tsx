@@ -2,15 +2,37 @@ import React from 'react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 export interface InvoicePreviewTemplateProps {
-  customerName?: string;       // Full name e.g. "Reliance (RQS001)"
+  customerName?: string;       // Master/display name e.g. "Ericsson"
+  customerCompanyName?: string; // Registered Company Name e.g. "Ericsson India Pvt Ltd"
+  customerAddress?: string;
+  customerDetails?: any;
+  serviceCategory?: string;    // e.g. "Transportation", "Warehousing", etc.
+  customerGSTIN?: string;
   customerCode?: string;       // e.g. "RQS001", "FLIP001"
   projectName?: string;
+  projectDetails?: any;
   invoiceLocation?: string;    // Location text value
   invoiceType?: string;        // "Fixed" | "Adhoc"
   startDate?: string;
   endDate?: string;
   invoiceDate?: string;
-  reportData?: { misData: any[]; annexureData: any[]; flipkartAnnexureData?: any[]; flipkartAdhocAnnexureData?: any[]; fallbackCustomerGSTIN?: string; fallbackCustomerAddress?: string } | null;
+  reportData?: { 
+    misData: any[]; 
+    annexureData: any[]; 
+    flipkartAnnexureData?: any[]; 
+    flipkartAdhocAnnexureData?: any[]; 
+    fallbackCustomerGSTIN?: string; 
+    fallbackProjectGSTIN?: string;
+    fallbackProjectTypeOfBilling?: string;
+    fallbackProjectGSTRate?: string;
+    fallbackProjectDetails?: any;
+    fallbackCustomerAddress?: string;
+    fallbackCustomerName?: string;
+    fallbackCustomerCompanyName?: string;
+    fallbackCustomerTypeOfServices?: string;
+    fallbackCustomerServiceCode?: string;
+    fallbackCustomerDetails?: any;
+  } | null;
   // Additional metadata fields
   workOrderNo?: string;
   serviceProviderCode?: string;
@@ -110,7 +132,7 @@ const BankDetails = () => (
 const RelianceInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: number; totalTax: number; grandTotal: number }> = ({
   customerName, projectName, invoiceLocation, invoiceType, startDate, endDate, invoiceDate,
   workOrderNo, serviceProviderCode, totalFreight, totalTax, grandTotal,
-  ourGSTIN, ourPAN, ourState, ourCompanyName, reportData, invoiceNumber
+  ourGSTIN, ourPAN, ourState, ourCompanyName, reportData, invoiceNumber, customerGSTIN: propsCustomerGSTIN, projectDetails: propsProjectDetails, customerDetails
 }) => {
   const isInterState = invoiceLocation?.toLowerCase().includes('uttar') || invoiceLocation?.toLowerCase().includes('up');
   const igst = isInterState ? totalTax : 0;
@@ -118,7 +140,17 @@ const RelianceInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
   const sgst = !isInterState ? totalTax / 2 : 0;
   const period = (startDate && endDate) ? `${formatDate(startDate)} to ${formatDate(endDate)}` : '25-Apr-2025 to 24-May-2025';
 
-  const dbGSTNo = reportData?.misData?.find(row => row.GSTNo)?.GSTNo || reportData?.fallbackCustomerGSTIN;
+  const dbGSTNo = 
+    propsCustomerGSTIN ||
+    reportData?.misData?.find(row => row.GSTNo)?.GSTNo || 
+    reportData?.fallbackProjectGSTIN ||
+    reportData?.fallbackProjectDetails?.gstNo ||
+    (propsProjectDetails as any)?.gstNo ||
+    reportData?.fallbackCustomerGSTIN ||
+    reportData?.fallbackCustomerDetails?.gstNo ||
+    (customerDetails as any)?.gstNo ||
+    (customerDetails as any)?.GSTNo;
+
   const customerGSTIN = dbGSTNo || '09AAACF5232A1Z7';
   const customerPAN = customerGSTIN.length >= 15 ? customerGSTIN.substring(2, 12) : 'AAACF5232A';
 
@@ -142,10 +174,18 @@ const RelianceInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
           <tr>
             <td className="border-2 border-black p-2 align-top w-1/2">
               <span className="font-bold">Service Recipient Name and Address</span><br />
-              <span className="font-bold">Name - QWIK Supply Chain Private Ltd</span><br />
-              <span className="font-bold">(Formerly - Fine Tech Corporation Pvt Ltd)</span><br />
-              <span className="font-bold">Address: Plot No TC 58V &amp; 59V, Eldeco Corporate Chamber 2,</span><br />
-              <span className="font-bold">Phase I, Vibhut Gomti Nagar, LUCKNOW - 226010, Uttar Pradesh</span><br />
+              <span className="font-bold">Name - {reportData?.fallbackCustomerCompanyName || reportData?.fallbackCustomerDetails?.companyName || (customerName ? customerName.split(' (')[0].trim() : '') || 'QWIK Supply Chain Private Ltd'}</span><br />
+              {(!reportData?.fallbackCustomerCompanyName && !customerName?.toLowerCase().includes('qwik') ? null : (
+                <><span className="font-bold">(Formerly - Fine Tech Corporation Pvt Ltd)</span><br /></>
+              ))}
+              <span className="font-bold">Address: {
+                reportData?.fallbackCustomerDetails
+                  ? [
+                      [reportData.fallbackCustomerDetails.houseFlatNo, reportData.fallbackCustomerDetails.streetLocality].filter(Boolean).join(', '),
+                      [reportData.fallbackCustomerDetails.city, reportData.fallbackCustomerDetails.state ? (reportData.fallbackCustomerDetails.pinCode ? `${reportData.fallbackCustomerDetails.state} - ${reportData.fallbackCustomerDetails.pinCode}` : reportData.fallbackCustomerDetails.state) : reportData.fallbackCustomerDetails.pinCode].filter(Boolean).join(', ')
+                    ].filter(Boolean).join(', ')
+                  : (reportData?.fallbackCustomerAddress || 'Plot No TC 58V & 59V, Eldeco Corporate Chamber 2, Phase I, Vibhut Gomti Nagar, LUCKNOW - 226010, Uttar Pradesh')
+              }</span><br />
               <span className="font-bold">GSTIN: {customerGSTIN} &nbsp;|&nbsp; PAN: {customerPAN}</span>
             </td>
             <td className="border-2 border-black p-2 align-top w-1/2 font-bold">
@@ -250,7 +290,8 @@ const RelianceInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
 const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: number; totalTax: number; grandTotal: number }> = ({
   projectName, invoiceLocation, invoiceType, startDate, endDate, invoiceDate,
   costCode, totalFreight, totalTax, grandTotal,
-  ourGSTIN, ourPAN, ourState, ourCompanyName, reportData, invoiceNumber
+  ourGSTIN, ourPAN, ourState, ourCompanyName, reportData, invoiceNumber, 
+  customerName, customerCompanyName, customerAddress, customerDetails, customerGSTIN: propsCustomerGSTIN, projectDetails: propsProjectDetails, serviceCategory: propsServiceCategory
 }) => {
   // Determine GST split based on state
   const isInterState = invoiceLocation?.toLowerCase().includes('uttar') || invoiceLocation?.toLowerCase().includes('up');
@@ -262,19 +303,110 @@ const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
     ? `${formatDate(startDate)} to ${formatDate(endDate)}`
     : '1st May to 31st May 2025';
 
-  // Resolve customer address based on state
-  const isUP = isInterState;
-  const customerAddress = isUP ? (
-    <>M/s Instakart Services Pvt Ltd,<br />KHASRA NO. 1132, UNITED WORLD WAREHOUSE,<br />NEAR CRPF CAMP BIJNAUR, VILLAGE MATI,<br />LUCKNOW, UTTAR PRADESH 226002</>
-  ) : invoiceLocation?.toLowerCase().includes('hary') || invoiceLocation?.toLowerCase().includes('hyn') || invoiceLocation?.toLowerCase().includes('gurugram') ? (
-    <>M/s Instakart Services Private Limited,<br />219/15, BOHRAKALAN, WARD NO. 67, TEH. PATAUDI,<br />GURGAON, HARYANA - 122413</>
-  ) : (
-    <>M/s Instrakart Services Pvt Ltd,<br />PLOT NO 36/3 AND 37 BAMNOLI VILLAGE,<br />DELHI, WEST DELHI, DELHI - 110077</>
-  );
+  // Resolve customer company name
+  const rawCompanyName = 
+    customerCompanyName ||
+    reportData?.fallbackCustomerCompanyName || 
+    reportData?.fallbackCustomerDetails?.companyName ||
+    (customerDetails as any)?.companyName ||
+    (customerName ? customerName.split(' (')[0].trim() : '') ||
+    '';
 
-  // Get GSTNo from DB if available (either from transaction or customer table)
-  const dbGSTNo = reportData?.misData?.find(row => row.GSTNo)?.GSTNo || reportData?.fallbackCustomerGSTIN;
+  const displayCompanyName = rawCompanyName
+    ? (rawCompanyName.trim().toLowerCase().startsWith('m/s') ? rawCompanyName.trim() : `M/s ${rawCompanyName.trim()}`)
+    : (isInterState ? 'M/s Instakart Services Pvt Ltd' : 'M/s Instakart Services Private Limited');
+
+  // Resolve service category dynamically from customer master
+  const resolvedServiceCategory = 
+    propsServiceCategory ||
+    reportData?.fallbackCustomerTypeOfServices || 
+    reportData?.fallbackCustomerDetails?.typeOfServices || 
+    (customerDetails as any)?.typeOfServices || 
+    'Transportation';
+
+  // Resolve dynamic customer address based on TMS master data
+  const renderCustomerAddress = () => {
+    const details = reportData?.fallbackCustomerDetails || customerDetails;
+    if (details) {
+      const line1 = [details.houseFlatNo, details.streetLocality].filter(Boolean).map((s: any) => String(s).trim()).filter(Boolean).join(', ');
+      const line2 = [details.city, details.state ? (details.pinCode ? `${details.state} ${details.pinCode}` : details.state) : details.pinCode].filter(Boolean).map((s: any) => String(s).trim()).filter(Boolean).join(', ');
+      const line3 = details.country && details.country !== 'India' ? String(details.country).trim() : '';
+
+      if (line1 || line2) {
+        return (
+          <>
+            {displayCompanyName},<br />
+            {line1 && <>{line1.toUpperCase()},<br /></>}
+            {line2 && <>{line2.toUpperCase()}</>}
+            {line3 && <><br />{line3.toUpperCase()}</>}
+          </>
+        );
+      }
+    }
+
+    const addr = reportData?.fallbackCustomerAddress || customerAddress;
+    if (addr) {
+      return (
+        <>
+          {displayCompanyName},<br />
+          {addr.toUpperCase()}
+        </>
+      );
+    }
+
+    // Default fallback
+    return isInterState ? (
+      <>
+        {displayCompanyName},<br />
+        KHASRA NO. 1132, UNITED WORLD WAREHOUSE,<br />
+        NEAR CRPF CAMP BIJNAUR, VILLAGE MATI,<br />
+        LUCKNOW, UTTAR PRADESH 226002
+      </>
+    ) : invoiceLocation?.toLowerCase().includes('hary') || invoiceLocation?.toLowerCase().includes('hyn') || invoiceLocation?.toLowerCase().includes('gurugram') ? (
+      <>
+        {displayCompanyName},<br />
+        219/15, BOHRAKALAN, WARD NO. 67, TEH. PATAUDI,<br />
+        GURGAON, HARYANA - 122413
+      </>
+    ) : (
+      <>
+        {displayCompanyName},<br />
+        PLOT NO 36/3 AND 37 BAMNOLI VILLAGE,<br />
+        DELHI, WEST DELHI, DELHI - 110077
+      </>
+    );
+  };
+
+  // Get GSTNo from DB if available (either from project table, customer table, or transaction)
+  const dbGSTNo = 
+    propsCustomerGSTIN ||
+    reportData?.misData?.find(row => row.GSTNo)?.GSTNo || 
+    reportData?.fallbackProjectGSTIN ||
+    reportData?.fallbackProjectDetails?.gstNo ||
+    (propsProjectDetails as any)?.gstNo ||
+    reportData?.fallbackCustomerGSTIN ||
+    reportData?.fallbackCustomerDetails?.gstNo ||
+    (customerDetails as any)?.gstNo ||
+    (customerDetails as any)?.GSTNo;
+
   const customerGSTIN = dbGSTNo || '—';
+
+  // Determine RCM and GST Rate
+  const billingType = 
+    reportData?.fallbackProjectTypeOfBilling ||
+    reportData?.fallbackProjectDetails?.typeOfBilling ||
+    (propsProjectDetails as any)?.typeOfBilling ||
+    reportData?.misData?.find((r: any) => r.TypeOfBilling)?.TypeOfBilling ||
+    '';
+
+  const isRCM = String(billingType).trim().toUpperCase() === 'RCM' || String(billingType).trim().toUpperCase().includes('RCM');
+
+  const rawGstRate = 
+    reportData?.fallbackProjectGSTRate ||
+    reportData?.fallbackProjectDetails?.gstRate ||
+    (propsProjectDetails as any)?.gstRate;
+
+  const gstRatePercent = isRCM ? 0 : (rawGstRate !== undefined && rawGstRate !== null && rawGstRate !== '' ? parseFloat(rawGstRate) : 18);
 
   const tripTypeLabel = invoiceType === 'Fixed' ? 'Fix' : 'Adhoc';
   const cleanLocation = invoiceLocation ? invoiceLocation.split('-')[0].trim() : '';
@@ -301,11 +433,11 @@ const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
             <td className="border-2 border-black p-1 font-bold">Our GSTIN</td>
             <td className="border-2 border-black p-1">: {ourGSTIN || '07AAFCC4715N1ZG'}</td>
             <td className="border-2 border-black p-1 font-bold">Invoice Under RCM</td>
-            <td className="border-2 border-black p-1 line-through decoration-2">: No</td>
+            <td className="border-2 border-black p-1 font-bold">: {isRCM ? 'Yes' : 'No'}</td>
           </tr>
           <tr>
             <td className="border-2 border-black p-1 font-bold">Service Category</td>
-            <td className="border-2 border-black p-1">: Transportation</td>
+            <td className="border-2 border-black p-1">: {resolvedServiceCategory}</td>
             <td className="border-2 border-black p-1 font-bold">Customer PO No.</td>
             <td className="border-2 border-black p-1">: Agreement</td>
           </tr>
@@ -319,11 +451,11 @@ const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
             <td className="border-2 border-black p-2 w-1/2">
               <span className="font-bold underline">Invoice To :-</span>
               <span className="ml-4 font-bold">GSTIN - {customerGSTIN}</span>
-              <div className="mt-2 font-bold">{customerAddress}</div>
+              <div className="mt-2 font-bold">{renderCustomerAddress()}</div>
             </td>
             <td className="border-2 border-black p-2 w-1/2">
               <span className="font-bold underline">Invoice For / Place Of Supply :-</span>
-              <div className="mt-2 font-bold">{customerAddress}</div>
+              <div className="mt-2 font-bold">{renderCustomerAddress()}</div>
             </td>
           </tr>
         </tbody>
@@ -384,15 +516,15 @@ const FlipkartInvoice: React.FC<InvoicePreviewTemplateProps & { totalFreight: nu
             <td className="border-2 border-black p-1 text-right font-bold">{formatCurrency(totalFreight)}</td>
           </tr>
           <tr>
-            <td className="border-2 border-black p-1 font-bold text-center">IGST @18%</td>
+            <td className="border-2 border-black p-1 font-bold text-center">IGST {isRCM ? '' : `@${gstRatePercent}%`}</td>
             <td className="border-2 border-black p-1 text-right font-bold">{igst > 0 ? formatCurrency(igst) : '-'}</td>
           </tr>
           <tr>
-            <td className="border-2 border-black p-1 font-bold text-center">CGST @9%</td>
+            <td className="border-2 border-black p-1 font-bold text-center">CGST {isRCM ? '' : `@${gstRatePercent / 2}%`}</td>
             <td className="border-2 border-black p-1 text-right font-bold">{cgst > 0 ? formatCurrency(cgst) : '-'}</td>
           </tr>
           <tr>
-            <td className="border-2 border-black p-1 font-bold text-center">SGST @9%</td>
+            <td className="border-2 border-black p-1 font-bold text-center">SGST {isRCM ? '' : `@${gstRatePercent / 2}%`}</td>
             <td className="border-2 border-black p-1 text-right font-bold">{sgst > 0 ? formatCurrency(sgst) : '-'}</td>
           </tr>
           <tr>
@@ -423,7 +555,7 @@ const NoSelectionFallback = () => (
 
 // ─── Main Export ──────────────────────────────────────────────────────────────
 export const InvoicePreviewTemplate: React.FC<InvoicePreviewTemplateProps> = (props) => {
-  const { customerCode, customerName, reportData, invoiceType } = props;
+  const { customerCode, customerName, reportData, invoiceType, projectDetails } = props;
 
   // Compute financial aggregates from actual report data
   const totalFreight = React.useMemo(() => {
@@ -447,7 +579,22 @@ export const InvoicePreviewTemplate: React.FC<InvoicePreviewTemplateProps> = (pr
     return fromFlipkart || fromFlipkartAdhoc || fromAnnexure || fromMIS || 0;
   }, [reportData]);
 
-  const totalTax = totalFreight * 0.18;
+  // Determine RCM and Tax
+  const rawTypeOfBilling = 
+    reportData?.fallbackProjectTypeOfBilling ||
+    reportData?.fallbackProjectDetails?.typeOfBilling ||
+    (projectDetails as any)?.typeOfBilling ||
+    reportData?.misData?.find((r: any) => r.TypeOfBilling)?.TypeOfBilling ||
+    '';
+  const isRCM = String(rawTypeOfBilling).trim().toUpperCase() === 'RCM' || String(rawTypeOfBilling).trim().toUpperCase().includes('RCM');
+
+  const rawGstRate = 
+    reportData?.fallbackProjectGSTRate ||
+    reportData?.fallbackProjectDetails?.gstRate ||
+    (projectDetails as any)?.gstRate;
+
+  const gstRatePercent = isRCM ? 0 : (rawGstRate !== undefined && rawGstRate !== null && rawGstRate !== '' ? parseFloat(rawGstRate) : 18);
+  const totalTax = isRCM ? 0 : totalFreight * (gstRatePercent / 100);
   const grandTotal = totalFreight + totalTax;
 
   const ecosystem = detectEcosystem(customerCode, customerName);

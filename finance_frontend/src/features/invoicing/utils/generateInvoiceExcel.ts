@@ -98,7 +98,14 @@ export interface InvoiceExcelParams {
   invoiceType: string;
   invoiceLocation: string;
   customerName: string;
+  customerCompanyName?: string;
+  customerAddress?: string;
+  customerDetails?: any;
+  serviceCategory?: string;
   customerGSTIN: string;
+  typeOfBilling?: string;
+  isRCM?: boolean;
+  gstRate?: string | number;
   costCode: string;
   projectName: string;
   totalFreight: number;
@@ -112,17 +119,20 @@ export interface InvoiceExcelParams {
 export async function generateInvoiceExcel(params: InvoiceExcelParams): Promise<Blob> {
   const {
     invoiceNumber, invoiceDate, startDate, endDate,
-    invoiceType, invoiceLocation, customerName, customerGSTIN,
+    invoiceType, invoiceLocation, customerName, customerCompanyName, customerAddress, customerDetails, serviceCategory, customerGSTIN,
+    typeOfBilling, isRCM: propsIsRCM, gstRate,
     costCode, projectName, totalFreight, isInterState, logoBuffer,
     annexureRows, misRows,
   } = params;
 
-  // Calculations
-  const totalTax = totalFreight * 0.18;
+  // Determine RCM & Tax
+  const isRCM = propsIsRCM ?? (String(typeOfBilling || '').trim().toUpperCase() === 'RCM' || String(typeOfBilling || '').trim().toUpperCase().includes('RCM'));
+  const gstRatePercent = isRCM ? 0 : (gstRate !== undefined && gstRate !== null && gstRate !== '' ? parseFloat(String(gstRate)) : 18);
+  const totalTax = isRCM ? 0 : totalFreight * (gstRatePercent / 100);
   const grandTotal = Math.round(totalFreight + totalTax);
-  const igst  = isInterState ? totalTax : 0;
-  const cgst  = !isInterState ? totalTax / 2 : 0;
-  const sgst  = !isInterState ? totalTax / 2 : 0;
+  const igst  = isInterState && !isRCM ? totalTax : 0;
+  const cgst  = !isInterState && !isRCM ? totalTax / 2 : 0;
+  const sgst  = !isInterState && !isRCM ? totalTax / 2 : 0;
 
   const period = (startDate && endDate)
     ? `${fmtDate(startDate)} to ${fmtDate(endDate)}`
@@ -134,10 +144,27 @@ export async function generateInvoiceExcel(params: InvoiceExcelParams): Promise<
   const isUP = isInterState;
   const isHaryana = invoiceLocation?.toLowerCase().includes("hary") || invoiceLocation?.toLowerCase().includes("gurugram");
 
-  // Customer address based on state
+  // Resolve Customer Company Name
+  const rawCompanyName = customerCompanyName || customerDetails?.companyName || (customerName ? customerName.split(" (")[0].trim() : "");
+  const displayCompanyName = rawCompanyName
+    ? (rawCompanyName.trim().toLowerCase().startsWith("m/s") ? rawCompanyName.trim() : `M/s ${rawCompanyName.trim()}`)
+    : (isUP ? "M/s Instakart Services Pvt Ltd" : "M/s Instakart Services Private Limited");
+
+  // Customer address based on TMS master data
   let invoiceTo: string;
   let invoiceFor: string;
-  if (isUP) {
+
+  if (customerDetails) {
+    const line1 = [customerDetails.houseFlatNo, customerDetails.streetLocality].filter(Boolean).map((s: any) => String(s).trim()).filter(Boolean).join(", ");
+    const line2 = [customerDetails.city, customerDetails.state ? (customerDetails.pinCode ? `${customerDetails.state} ${customerDetails.pinCode}` : customerDetails.state) : customerDetails.pinCode].filter(Boolean).map((s: any) => String(s).trim()).filter(Boolean).join(", ");
+    const line3 = customerDetails.country && customerDetails.country !== "India" ? String(customerDetails.country).trim() : "";
+    const addrLines = [displayCompanyName, line1?.toUpperCase(), line2?.toUpperCase(), line3?.toUpperCase()].filter(Boolean);
+    invoiceTo = addrLines.join(",\n");
+    invoiceFor = addrLines.join(",\n");
+  } else if (customerAddress) {
+    invoiceTo = `${displayCompanyName},\n${customerAddress.toUpperCase()}`;
+    invoiceFor = `${displayCompanyName},\n${customerAddress.toUpperCase()}`;
+  } else if (isUP) {
     invoiceTo = "M/s Instakart Services Pvt Ltd,\nKHASRA NO. 1132, UNITED WORLD WAREHOUSE, NEAR CRPF CAMP BIJNAUR, VILLAGE MATI, LUCKNOW,\nUTTAR PRADESH, 226002";
     invoiceFor = "M/s Instakart Services Pvt Ltd,\nKHASRA NO. 1132, UNITED WORLD WAREHOUSE, NEAR CRPF CAMP BIJNAUR, VILLAGE MATI, LUCKNOW,\nUTTAR PRADESH, 226002";
   } else if (isHaryana) {
@@ -286,10 +313,15 @@ export async function generateInvoiceExcel(params: InvoiceExcelParams): Promise<
   // SECTION 3: INVOICE METADATA GRID (R7–R9)
   // =========================================================================
 
+  const resolvedServiceCategory = 
+    serviceCategory || 
+    customerDetails?.typeOfServices || 
+    "Transportation";
+
   const metaRows: [string, string, string, string][] = [
     ["Invoice No.", `: ${invoiceNumber}`, "Date", `: ${fmtDate(invoiceDate) || fmtDate(endDate)}`],
-    ["Our GSTIN", ": 07AAFCC4715N1ZG", "Invoice Under RCM", ": No"],
-    ["Service Category", ": Transportation", "Customer PO No.", ": Agreement"],
+    ["Our GSTIN", ": 07AAFCC4715N1ZG", "Invoice Under RCM", `: ${isRCM ? 'Yes' : 'No'}`],
+    ["Service Category", `: ${resolvedServiceCategory}`, "Customer PO No.", ": Agreement"],
   ];
 
   metaRows.forEach(([l1, val1, l2, val2], i) => {
@@ -543,11 +575,15 @@ export async function generateInvoiceExcel(params: InvoiceExcelParams): Promise<
   }
 
   // Right side: tax rows (R37-R41), cols E-F = label, G = value
+  const igstLabel = isRCM ? "IGST" : `IGST@${gstRatePercent}%`;
+  const cgstLabel = isRCM ? "CGST" : `CGST@${gstRatePercent / 2}%`;
+  const sgstLabel = isRCM ? "SGST" : `SGST@${gstRatePercent / 2}%`;
+
   const taxRowData: [string, number | null, boolean][] = [
     ["Sub Total Before Tax", totalFreight, false],
-    ["IGST@18%", isInterState ? igst : null, false],
-    ["CGST@9%", !isInterState ? cgst : null, false],
-    ["SGST@9%", !isInterState ? sgst : null, false],
+    [igstLabel, isInterState && !isRCM && igst > 0 ? igst : null, false],
+    [cgstLabel, !isInterState && !isRCM && cgst > 0 ? cgst : null, false],
+    [sgstLabel, !isInterState && !isRCM && sgst > 0 ? sgst : null, false],
     ["Grand Total After Tax", grandTotal, true],
   ];
   taxRowData.forEach(([label, val, isBold], i) => {

@@ -49,7 +49,16 @@ export default function VendorBillsList() {
   const bills = vendorInvoices.map((inv: any) => ({
     id: String(inv.id),
     billNumber: inv.invoice_number,
-    vendorName: inv.vendor_name,
+    vendorName: inv.company_name || inv.vendor_name,
+    companyName: inv.company_name,
+    vendorAddress: inv.vendor_address || inv.address_of_company,
+    addressOfCompany: inv.address_of_company,
+    vendorGst: inv.vendor_gst || inv.gst_no,
+    accountHolderName: inv.account_holder_name || inv.company_name || inv.vendor_name,
+    accountNumber: inv.account_number,
+    ifscCode: inv.ifsc_code,
+    bankName: inv.bank_name,
+    branchName: inv.branch_name,
     date: inv.date,
     dueDate: inv.due_date,
     amount: Number(inv.amount) || 0,
@@ -230,8 +239,8 @@ export default function VendorBillsList() {
            <div className="p-6 text-black min-w-[650px] mx-auto bg-white">
              <div className="border-[2px] border-black bg-white text-black">
                 <div className="bg-[#fcb900] text-center p-3 border-b-[2px] border-black">
-                  <h1 className="font-bold text-lg">{selectedBill.vendorName}</h1>
-                  <p className="text-sm font-medium">Vendor Address and Contact Details</p>
+                  <h1 className="font-bold text-lg">{selectedBill.companyName || selectedBill.vendorName}</h1>
+                  <p className="text-sm font-medium">{selectedBill.vendorAddress || 'Vendor Address and Contact Details'}</p>
                 </div>
 
                 <div className="text-center font-bold border-b-[2px] border-black uppercase text-[15px] tracking-wide py-0.5">
@@ -252,7 +261,7 @@ export default function VendorBillsList() {
                 <div className="grid grid-cols-2 border-b-[2px] border-black text-sm">
                   <div className="border-r-[2px] border-black p-0.5 grid grid-cols-[140px_1fr] items-center">
                     <span className="font-bold pl-1 text-[12px]">Our GSTIN</span>
-                    <span className="px-1 py-0.5 ml-1 text-[12px]">: </span>
+                    <span className="px-1 py-0.5 ml-1 text-[12px]">: {selectedBill.vendorGst || '—'}</span>
                   </div>
                   <div className="p-0.5 grid grid-cols-[140px_1fr] items-center flex gap-1">
                     <span className="font-bold pl-1 text-[12px]">Invoice Under RCM</span>
@@ -281,9 +290,9 @@ export default function VendorBillsList() {
                     </div>
                     <div className="font-bold mt-1 p-1 flex-1 text-[11px] leading-snug">
                       Cogent Logistics Private Limited<br/>
-                      201C/6, 2nd Floor, D-21 Corporate<br/>
-                      Park, Sector 21, Dwarka, New Delhi -<br/>
-                      110077
+                      <span className="font-normal whitespace-pre-line">
+                        {selectedBill.addressOfCompany || '201C/6, 2nd Floor, D-21 Corporate\nPark, Sector 21, Dwarka, New Delhi -\n110077'}
+                      </span>
                     </div>
                   </div>
                   <div className="p-1 flex flex-col">
@@ -292,8 +301,9 @@ export default function VendorBillsList() {
                     </div>
                     <div className="font-bold mt-1 p-1 flex-1 text-[11px] leading-snug">
                       Cogent Logistics Private Limited<br/>
-                      201C/6, 2nd Floor, D-21 Corporate Park, Sector<br/>
-                      21, Dwarka, New Delhi - 110077
+                      <span className="font-normal whitespace-pre-line">
+                        {selectedBill.addressOfCompany || '201C/6, 2nd Floor, D-21 Corporate Park, Sector\n21, Dwarka, New Delhi - 110077'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -345,23 +355,23 @@ export default function VendorBillsList() {
                   <div className="font-bold underline p-1 text-[12px]">Our Bank Details :-</div>
                   <div className="grid grid-cols-[140px_1fr] border-t-[2px] border-black text-[11px]">
                     <div className="border-r-[2px] border-black p-0.5 pl-1">Account Holder Name</div>
-                    <div className="p-0.5 text-center">{selectedBill.vendorName}</div>
+                    <div className="p-0.5 text-center">{selectedBill.accountHolderName || selectedBill.companyName || selectedBill.vendorName}</div>
                   </div>
                   <div className="grid grid-cols-[140px_1fr] border-t-[1px] border-black text-[11px]">
                     <div className="border-r-[2px] border-black p-0.5 pl-1">Bank Name</div>
-                    <div></div>
+                    <div className="p-0.5 text-center">{selectedBill.bankName || ''}</div>
                   </div>
                   <div className="grid grid-cols-[140px_1fr] border-t-[1px] border-black text-[11px]">
                     <div className="border-r-[2px] border-black p-0.5 pl-1">Account No.</div>
-                    <div></div>
+                    <div className="p-0.5 text-center">{selectedBill.accountNumber || ''}</div>
                   </div>
                   <div className="grid grid-cols-[140px_1fr] border-t-[1px] border-black text-[11px]">
                     <div className="border-r-[2px] border-black p-0.5 pl-1">IFSC Code</div>
-                    <div></div>
+                    <div className="p-0.5 text-center">{selectedBill.ifscCode || ''}</div>
                   </div>
                   <div className="grid grid-cols-[140px_1fr] border-t-[1px] border-black text-[11px]">
                     <div className="border-r-[2px] border-black p-0.5 pl-1">Branch</div>
-                    <div></div>
+                    <div className="p-0.5 text-center">{selectedBill.branchName || ''}</div>
                   </div>
                 </div>
 

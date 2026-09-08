@@ -48,7 +48,24 @@ export default function CustomerInvoice() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
-  const [reportData, setReportData] = useState<{ misData: any[], annexureData: any[], flipkartAnnexureData?: any[], flipkartAdhocAnnexureData?: any[], fallbackCustomerGSTIN?: string, fallbackCustomerAddress?: string } | null>(null)
+  const [reportData, setReportData] = useState<{ 
+    misData: any[], 
+    annexureData: any[], 
+    flipkartAnnexureData?: any[], 
+    flipkartAdhocAnnexureData?: any[], 
+    fallbackCustomerGSTIN?: string, 
+    fallbackProjectGSTIN?: string,
+    fallbackProjectTypeOfBilling?: string,
+    fallbackProjectGSTRate?: string,
+    fallbackProjectBillingTenure?: string,
+    fallbackProjectDetails?: any,
+    fallbackCustomerAddress?: string,
+    fallbackCustomerName?: string,
+    fallbackCustomerCompanyName?: string,
+    fallbackCustomerTypeOfServices?: string,
+    fallbackCustomerServiceCode?: string,
+    fallbackCustomerDetails?: any 
+  } | null>(null)
   // Metadata fields
   const [workOrderNo, setWorkOrderNo] = useState("")
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0])
@@ -257,7 +274,20 @@ export default function CustomerInvoice() {
       }, 0);
       return fromFlipkart || fromFlipkartAdhoc || fromAnnexure || fromMIS || 0;
     })();
-    const totalTax = totalFreight * 0.18;
+
+    const billingType = 
+      reportData?.fallbackProjectTypeOfBilling ||
+      reportData?.fallbackProjectDetails?.typeOfBilling ||
+      (selectedProject as any)?.typeOfBilling ||
+      reportData?.misData?.find((r: any) => r.TypeOfBilling)?.TypeOfBilling ||
+      '';
+    const isRCM = String(billingType).trim().toUpperCase() === 'RCM' || String(billingType).trim().toUpperCase().includes('RCM');
+    const rawGstRate = 
+      reportData?.fallbackProjectGSTRate ||
+      reportData?.fallbackProjectDetails?.gstRate ||
+      (selectedProject as any)?.gstRate;
+    const gstRatePercent = isRCM ? 0 : (rawGstRate !== undefined && rawGstRate !== null && rawGstRate !== '' ? parseFloat(rawGstRate) : 18);
+    const totalTax = isRCM ? 0 : totalFreight * (gstRatePercent / 100);
     const grandTotal = totalFreight + totalTax;
 
     const printArea = document.getElementById('invoice-print-area');
@@ -301,7 +331,11 @@ export default function CustomerInvoice() {
       (selectedProjectName && selectedLocationName ? `${selectedProjectName} ${selectedLocationName}` : (invoiceType ? `${selectedProjectName} ${invoiceType}` : selectedProjectName));
 
     const dbGSTNo = reportData?.misData?.find((row: any) => row.GSTNo)?.GSTNo || 
+      reportData?.fallbackProjectGSTIN ||
+      reportData?.fallbackProjectDetails?.gstNo ||
+      (selectedProject as any)?.gstNo ||
       reportData?.fallbackCustomerGSTIN || 
+      reportData?.fallbackCustomerDetails?.gstNo ||
       (selectedCustomer as any)?.gstNo || 
       (selectedCustomer as any)?.gstin || 
       (selectedCustomer as any)?.GSTNo || 
@@ -573,7 +607,14 @@ export default function CustomerInvoice() {
     }
 
     const isInterState = invoiceLocation?.toLowerCase().includes('uttar') || invoiceLocation?.toLowerCase().includes('up');
-    const dbGSTNo = reportData?.misData?.find((row: any) => row.GSTNo)?.GSTNo || reportData?.fallbackCustomerGSTIN;
+    const dbGSTNo = reportData?.misData?.find((row: any) => row.GSTNo)?.GSTNo || 
+      reportData?.fallbackProjectGSTIN ||
+      reportData?.fallbackProjectDetails?.gstNo ||
+      (selectedProject as any)?.gstNo ||
+      reportData?.fallbackCustomerGSTIN ||
+      reportData?.fallbackCustomerDetails?.gstNo ||
+      (selectedCustomer as any)?.gstNo ||
+      (selectedCustomer as any)?.GSTNo;
     const customerGSTIN = dbGSTNo || '—';
 
     // ── Fetch cogentes logo ───────────────────────────────────────────────────
@@ -620,6 +661,19 @@ export default function CustomerInvoice() {
       ])
     ];
 
+    const billingType = 
+      reportData?.fallbackProjectTypeOfBilling ||
+      reportData?.fallbackProjectDetails?.typeOfBilling ||
+      (selectedProject as any)?.typeOfBilling ||
+      reportData?.misData?.find((r: any) => r.TypeOfBilling)?.TypeOfBilling ||
+      '';
+    const isRCM = String(billingType).trim().toUpperCase() === 'RCM' || String(billingType).trim().toUpperCase().includes('RCM');
+    const rawGstRate = 
+      reportData?.fallbackProjectGSTRate ||
+      reportData?.fallbackProjectDetails?.gstRate ||
+      (selectedProject as any)?.gstRate;
+    const gstRatePercent = isRCM ? 0 : (rawGstRate !== undefined && rawGstRate !== null && rawGstRate !== '' ? parseFloat(rawGstRate) : 18);
+
     // ── Generate single Excel with Invoice + Annexure + MIS sheets ────────────
     const invoiceBlob = await generateInvoiceExcel({
       invoiceNumber: invNo,
@@ -629,7 +683,14 @@ export default function CustomerInvoice() {
       invoiceType,
       invoiceLocation,
       customerName: selectedCustomer?.name || 'Customer',
+      customerCompanyName: reportData?.fallbackCustomerCompanyName || (selectedCustomer as any)?.companyName,
+      customerAddress: reportData?.fallbackCustomerAddress,
+      customerDetails: reportData?.fallbackCustomerDetails,
+      serviceCategory: reportData?.fallbackCustomerTypeOfServices || (selectedCustomer as any)?.typeOfServices,
       customerGSTIN,
+      typeOfBilling: billingType,
+      isRCM,
+      gstRate: gstRatePercent,
       costCode,
       projectName: selectedProject?.name || '',
       totalFreight,
@@ -1224,6 +1285,20 @@ export default function CustomerInvoice() {
               <div id="invoice-print-area-hidden" className="hidden">
                 <InvoicePreviewTemplate
                   customerName={selectedCustomer?.name}
+                  customerCompanyName={reportData?.fallbackCustomerCompanyName || (selectedCustomer as any)?.companyName}
+                  customerAddress={reportData?.fallbackCustomerAddress || (selectedCustomer as any)?.address}
+                  customerDetails={reportData?.fallbackCustomerDetails || selectedCustomer}
+                  serviceCategory={reportData?.fallbackCustomerTypeOfServices || (selectedCustomer as any)?.typeOfServices}
+                  customerGSTIN={
+                    reportData?.fallbackProjectGSTIN ||
+                    reportData?.fallbackProjectDetails?.gstNo ||
+                    (selectedProject as any)?.gstNo ||
+                    reportData?.fallbackCustomerGSTIN ||
+                    reportData?.fallbackCustomerDetails?.gstNo ||
+                    (selectedCustomer as any)?.gstNo ||
+                    (selectedCustomer as any)?.GSTNo
+                  }
+                  projectDetails={reportData?.fallbackProjectDetails || selectedProject}
                   customerCode={selectedCustomer?.code}
                   projectName={selectedProject?.name}
                   invoiceLocation={invoiceLocation}
@@ -1244,6 +1319,20 @@ export default function CustomerInvoice() {
               <div id="invoice-print-area">
                 <InvoicePreviewTemplate
                   customerName={selectedCustomer?.name}
+                  customerCompanyName={reportData?.fallbackCustomerCompanyName || (selectedCustomer as any)?.companyName}
+                  customerAddress={reportData?.fallbackCustomerAddress || (selectedCustomer as any)?.address}
+                  customerDetails={reportData?.fallbackCustomerDetails || selectedCustomer}
+                  serviceCategory={reportData?.fallbackCustomerTypeOfServices || (selectedCustomer as any)?.typeOfServices}
+                  customerGSTIN={
+                    reportData?.fallbackProjectGSTIN ||
+                    reportData?.fallbackProjectDetails?.gstNo ||
+                    (selectedProject as any)?.gstNo ||
+                    reportData?.fallbackCustomerGSTIN ||
+                    reportData?.fallbackCustomerDetails?.gstNo ||
+                    (selectedCustomer as any)?.gstNo ||
+                    (selectedCustomer as any)?.GSTNo
+                  }
+                  projectDetails={reportData?.fallbackProjectDetails || selectedProject}
                   customerCode={selectedCustomer?.code}
                   projectName={selectedProject?.name}
                   invoiceLocation={invoiceLocation}

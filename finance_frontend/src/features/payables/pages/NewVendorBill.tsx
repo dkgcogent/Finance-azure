@@ -345,9 +345,31 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
       return acc + (isNaN(rowVal) ? 0 : rowVal);
     }, 0);
 
-    const vendorNameStr = vendorTrips?.vendorInfo?.VendorName || vendors?.find((v: any) => v.id.toString() === vendorId)?.name || 'Vendor Company Name and Vendor Name';
-    const vendorAddressStr = vendorTrips?.vendorInfo?.VendorAddress || 'Vendor Address and Contact Details';
-    const vendorGSTINStr = vendorTrips?.vendorInfo?.GSTIN || '';
+    const selectedVendorObj = vendors?.find((v: any) => v.id?.toString() === vendorId);
+    const vendorNameStr = 
+      vendorTrips?.vendorInfo?.displayCompanyName || 
+      vendorTrips?.vendorInfo?.CompanyName || 
+      selectedVendorObj?.companyName ||
+      vendorTrips?.vendorInfo?.VendorName || 
+      selectedVendorObj?.name || 
+      'Vendor Company Name';
+
+    const vendorAddressStr = 
+      vendorTrips?.vendorInfo?.fullAddressWithContact || 
+      vendorTrips?.vendorInfo?.addressWithContact || 
+      selectedVendorObj?.addressWithContact ||
+      vendorTrips?.vendorInfo?.VendorAddress || 
+      vendorTrips?.vendorInfo?.AddressOfCompany || 
+      selectedVendorObj?.address ||
+      selectedVendorObj?.companyAddress ||
+      'Vendor Address and Contact Details';
+
+    const vendorGSTINStr = 
+      vendorTrips?.vendorInfo?.CompanyGST || 
+      vendorTrips?.vendorInfo?.gstNo || 
+      vendorTrips?.vendorInfo?.GSTIN || 
+      selectedVendorObj?.gstNo || 
+      '';
 
     let locStr = "UP";
     const selectedLocObj = locations.find((l: any) => String(l.id) === String(locationId));
@@ -376,6 +398,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
       vendorName: vendorNameStr,
       vendorAddress: vendorAddressStr,
       vendorGSTIN: vendorGSTINStr,
+      addressOfCompany: vendorTrips?.vendorInfo?.AddressOfCompany || selectedVendorObj?.companyAddress || '',
       costCode: costCode || '4477',
       totalAmount: isNaN(totalAmt) ? 0 : Number(totalAmt.toFixed(2)),
       bankDetails: {
@@ -978,8 +1001,24 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                 className="w-[900px] mx-auto border-[3px] border-black bg-white text-black font-sans mb-8 shrink-0"
               >
                 <div className="bg-yellow-300 text-center py-6 px-4 border-b-[3px] border-black">
-                  <h1 className="text-2xl font-bold mb-2">{vendorTrips?.vendorInfo?.VendorName || vendors?.find(v => v.id.toString() === vendorId)?.name || 'Vendor Name'}</h1>
-                  <p className="text-base font-medium">{vendorTrips?.vendorInfo?.VendorAddress || 'Vendor Address and Contact Details'}</p>
+                  <h1 className="text-2xl font-bold mb-2">
+                    {vendorTrips?.vendorInfo?.displayCompanyName ||
+                     vendorTrips?.vendorInfo?.CompanyName ||
+                     vendorTrips?.vendorInfo?.VendorName ||
+                     vendors?.find((v: any) => v.id?.toString() === vendorId)?.companyName ||
+                     vendors?.find((v: any) => v.id?.toString() === vendorId)?.name ||
+                     'Vendor Company Name'}
+                  </h1>
+                  <p className="text-base font-medium">
+                    {vendorTrips?.vendorInfo?.fullAddressWithContact ||
+                     vendorTrips?.vendorInfo?.addressWithContact ||
+                     vendorTrips?.vendorInfo?.VendorAddress ||
+                     vendorTrips?.vendorInfo?.AddressOfCompany ||
+                     vendors?.find((v: any) => v.id?.toString() === vendorId)?.addressWithContact ||
+                     vendors?.find((v: any) => v.id?.toString() === vendorId)?.address ||
+                     vendors?.find((v: any) => v.id?.toString() === vendorId)?.companyAddress ||
+                     'Vendor Address and Contact Details'}
+                  </p>
                 </div>
 
                 <div className="text-center font-bold text-lg py-1 border-b-[3px] border-black tracking-widest underline underline-offset-4">
@@ -994,7 +1033,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                     </div>
                     <div className="flex border-b-[3px] border-black">
                       <div className="w-[140px] font-bold p-1 pl-2 border-r-[3px] border-black">Our GSTIN</div>
-                      <div className="flex-1 p-1 pl-2"></div>
+                      <div className="flex-1 p-1 pl-2">: {vendorTrips?.vendorInfo?.CompanyGST || vendorTrips?.vendorInfo?.gstNo || vendorTrips?.vendorInfo?.GSTIN || vendors?.find((v: any) => v.id?.toString() === vendorId)?.gstNo || '—'}</div>
                     </div>
                     <div className="flex">
                       <div className="w-[140px] font-bold p-1 pl-2 border-r-[3px] border-black">Service Category</div>
@@ -1027,16 +1066,22 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                     </div>
                     <div className="font-bold text-base leading-tight">
                       Cogent Logistics Private Limited<br />
-                      201C/6, 2nd Floor, D-21 Corporate Park,<br />
-                      Sector 21, Dwarka, New Delhi - 110077
+                      <span className="font-normal text-sm whitespace-pre-line">
+                        {vendorTrips?.vendorInfo?.AddressOfCompany ||
+                         vendors?.find((v: any) => v.id?.toString() === vendorId)?.companyAddress ||
+                         '201C/6, 2nd Floor, D-21 Corporate Park,\nSector 21, Dwarka, New Delhi - 110077'}
+                      </span>
                     </div>
                   </div>
                   <div className="p-2 pl-4">
                     <div className="font-bold mb-4 underline">Invoice For/ Place Of Supply :-</div>
                     <div className="font-bold text-base leading-tight">
                       Cogent Logistics Private Limited<br />
-                      201C/6, 2nd Floor, D-21 Corporate Park, Sector<br />
-                      21, Dwarka, New Delhi - 110077
+                      <span className="font-normal text-sm whitespace-pre-line">
+                        {vendorTrips?.vendorInfo?.AddressOfCompany ||
+                         vendors?.find((v: any) => v.id?.toString() === vendorId)?.companyAddress ||
+                         '201C/6, 2nd Floor, D-21 Corporate Park, Sector\n21, Dwarka, New Delhi - 110077'}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1125,7 +1170,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                     <tbody>
                       <tr className="border-b-[3px] border-black">
                         <td className="border-r-[3px] border-black p-1 pl-2 w-[180px]">Account Holder Name</td>
-                        <td className="p-1 pl-2 font-medium">{vendorTrips?.vendorInfo?.AccountHolderName || vendorTrips?.vendorInfo?.VendorName || ''}</td>
+                        <td className="p-1 pl-2 font-medium">{vendorTrips?.vendorInfo?.AccountHolderName || vendorTrips?.vendorInfo?.displayCompanyName || vendorTrips?.vendorInfo?.CompanyName || vendorTrips?.vendorInfo?.VendorName || ''}</td>
                       </tr>
                       <tr className="border-b-[3px] border-black">
                         <td className="border-r-[3px] border-black p-1 pl-2">Bank Name</td>
