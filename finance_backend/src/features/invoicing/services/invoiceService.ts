@@ -177,12 +177,51 @@ export const invoiceService = {
   },
 
   getCustomers: async () => {
-    const [rows] = await db.query("SELECT CustomerID as id, COALESCE(MasterCustomerName, Name) as name, GSTNo as gstNo, COALESCE(CustomerRegisteredOfficeAddress, CustomerCorporateOfficeAddress) as address FROM customer");
+    const [rows]: any = await db.query(`
+      SELECT 
+        CustomerID as id, 
+        COALESCE(MasterCustomerName, Name) as name, 
+        Name as companyName,
+        CustomerCode as code,
+        TypeOfServices as typeOfServices,
+        ServiceCode as serviceCode,
+        GSTNo as gstNo, 
+        HouseFlatNo as houseFlatNo,
+        StreetLocality as streetLocality,
+        CustomerCity as city,
+        CustomerState as state,
+        CustomerPinCode as pinCode,
+        CustomerCountry as country,
+        COALESCE(
+          NULLIF(TRIM(CONCAT_WS(', ', 
+            NULLIF(TRIM(HouseFlatNo), ''), 
+            NULLIF(TRIM(StreetLocality), ''), 
+            NULLIF(TRIM(CustomerCity), ''), 
+            NULLIF(TRIM(CONCAT_WS(' - ', NULLIF(TRIM(CustomerState), ''), NULLIF(TRIM(CustomerPinCode), ''))), '')
+          )), ''),
+          CustomerRegisteredOfficeAddress, 
+          CustomerCorporateOfficeAddress
+        ) as address 
+      FROM customer
+    `);
     return rows;
   },
 
   getProjects: async () => {
-    const [rows] = await db.query("SELECT ProjectID as id, ProjectName as name, CustomerID as customerId FROM project");
+    const [rows] = await db.query(`
+      SELECT 
+        ProjectID as id, 
+        ProjectName as name, 
+        CustomerID as customerId, 
+        ProjectCode as code, 
+        GSTNo as gstNo, 
+        TypeOfBilling as typeOfBilling, 
+        GSTRate as gstRate, 
+        BillingTenure as billingTenure,
+        Location as location,
+        State as state
+      FROM project
+    `);
     return rows;
   },
 
@@ -408,29 +447,131 @@ export const invoiceService = {
   generateReports: async (filters: any) => {
     const { customerId, projectId, locationId, tripType, startDate, endDate } = filters;
 
-    // Fetch the default customer GSTIN from the customer table as a fallback
-    let fallbackCustomerGSTIN = null;
-    let fallbackCustomerAddress = null;
-    try {
-      const [customerRows]: any = await db.query("SELECT GSTNo, COALESCE(CustomerRegisteredOfficeAddress, CustomerCorporateOfficeAddress) as address FROM customer WHERE CustomerID = ?", [customerId]);
-      if (customerRows.length > 0) {
-        fallbackCustomerGSTIN = customerRows[0].GSTNo;
-        fallbackCustomerAddress = customerRows[0].address;
-      }
-    } catch (e) {
-      console.error("Error fetching fallback customer GSTIN:", e);
-    }
-    
+    // Fetch customer details from customer table
+    let fallbackCustomerGSTIN: string | null = null;
+    let fallbackCustomerAddress: string | null = null;
+    let fallbackCustomerName: string | null = null;
+    let fallbackCustomerCompanyName: string | null = null;
+    let fallbackCustomerTypeOfServices: string | null = null;
+    let fallbackCustomerServiceCode: string | null = null;
+    let fallbackCustomerDetails: any = null;
     let coreCustomerName = '';
+
     try {
       if (customerId) {
-        const [cRows]: any = await db.query("SELECT Name, MasterCustomerName FROM customer WHERE CustomerID = ?", [customerId]);
-        if (cRows.length > 0) {
-          const rawName = cRows[0].Name || cRows[0].MasterCustomerName || '';
+        const [customerRows]: any = await db.query(`
+          SELECT 
+            CustomerID,
+            Name,
+            MasterCustomerName,
+            CustomerCode,
+            TypeOfServices,
+            ServiceCode,
+            GSTNo,
+            HouseFlatNo,
+            StreetLocality,
+            CustomerCity,
+            CustomerState,
+            CustomerPinCode,
+            CustomerCountry,
+            CustomerRegisteredOfficeAddress,
+            CustomerCorporateOfficeAddress
+          FROM customer 
+          WHERE CustomerID = ?
+        `, [customerId]);
+
+        if (customerRows.length > 0) {
+          const c = customerRows[0];
+          fallbackCustomerGSTIN = c.GSTNo || null;
+          fallbackCustomerName = c.MasterCustomerName || c.Name || null;
+          fallbackCustomerCompanyName = c.Name || c.MasterCustomerName || null;
+          fallbackCustomerTypeOfServices = c.TypeOfServices || 'Transportation';
+          fallbackCustomerServiceCode = c.ServiceCode || 'TRANS';
+
+          const addrParts = [
+            c.HouseFlatNo,
+            c.StreetLocality,
+            c.CustomerCity,
+            c.CustomerState ? (c.CustomerPinCode ? `${c.CustomerState} ${c.CustomerPinCode}` : c.CustomerState) : c.CustomerPinCode,
+            c.CustomerCountry && c.CustomerCountry !== 'India' ? c.CustomerCountry : null
+          ].filter((p: any) => p && String(p).trim().length > 0);
+
+          fallbackCustomerAddress = addrParts.length > 0
+            ? addrParts.join(', ')
+            : (c.CustomerRegisteredOfficeAddress || c.CustomerCorporateOfficeAddress || null);
+
+          fallbackCustomerDetails = {
+            id: c.CustomerID,
+            name: c.MasterCustomerName,
+            companyName: c.Name,
+            code: c.CustomerCode,
+            typeOfServices: c.TypeOfServices || 'Transportation',
+            serviceCode: c.ServiceCode || 'TRANS',
+            gstNo: c.GSTNo,
+            houseFlatNo: c.HouseFlatNo,
+            streetLocality: c.StreetLocality,
+            city: c.CustomerCity,
+            state: c.CustomerState,
+            pinCode: c.CustomerPinCode,
+            country: c.CustomerCountry,
+            address: fallbackCustomerAddress
+          };
+
+          const rawName = c.Name || c.MasterCustomerName || '';
           coreCustomerName = rawName.replace(/Pvt\.?\s*Ltd\.?/i, '').replace(/Private\s*Limited/i, '').trim();
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error("Error fetching fallback customer info:", e);
+    }
+
+    let fallbackProjectGSTIN: string | null = null;
+    let fallbackProjectTypeOfBilling: string | null = null;
+    let fallbackProjectGSTRate: string | null = null;
+    let fallbackProjectBillingTenure: string | null = null;
+    let fallbackProjectDetails: any = null;
+
+    try {
+      if (projectId) {
+        const [projectRows]: any = await db.query(`
+          SELECT 
+            ProjectID,
+            ProjectName,
+            ProjectCode,
+            CustomerID,
+            GSTNo,
+            TypeOfBilling,
+            GSTRate,
+            BillingTenure,
+            Location,
+            State
+          FROM project
+          WHERE ProjectID = ? OR ProjectName = ?
+        `, [projectId, projectId]);
+
+        if (projectRows.length > 0) {
+          const p = projectRows[0];
+          fallbackProjectGSTIN = p.GSTNo || null;
+          fallbackProjectTypeOfBilling = p.TypeOfBilling || null;
+          fallbackProjectGSTRate = p.GSTRate || null;
+          fallbackProjectBillingTenure = p.BillingTenure || null;
+          fallbackProjectDetails = {
+            id: p.ProjectID,
+            name: p.ProjectName,
+            code: p.ProjectCode,
+            customerId: p.CustomerID,
+            gstNo: p.GSTNo,
+            typeOfBilling: p.TypeOfBilling,
+            gstRate: p.GSTRate,
+            billingTenure: p.BillingTenure,
+            location: p.Location,
+            state: p.State
+          };
+        }
+      }
+    } catch (e) {
+      console.error("Error fetching fallback project info:", e);
+    }
 
     // Fetch MIS data
     let query = '';
@@ -756,6 +897,7 @@ export const invoiceService = {
               totalChargesWithDieselHike: totalChargesWithDieselHike,
               workingDaysToBeDone: workingDaysToBeDone,
               daysActualDone: new Set(),
+              dailyOdoMap: new Map(),
               totalKMs: 0,
               extraHour: 0,
               extraHourCharges: 0,
@@ -773,8 +915,31 @@ export const invoiceService = {
           }
         
           const summary = flipkartMap.get(veh);
-          summary.daysActualDone.add(new Date(row.date).toISOString().split('T')[0]);
-          summary.totalKMs += Number(row.distance || 0);
+          const dateKey = new Date(row.date).toISOString().split('T')[0];
+          summary.daysActualDone.add(dateKey);
+
+          const startKm = Number(row.startKm || row.OpeningKM || 0);
+          const endKm = Number(row.endKm || row.ClosingKM || 0);
+          const dist = Number(row.distance || (endKm > startKm ? endKm - startKm : 0) || 0);
+
+          if (!summary.dailyOdoMap.has(dateKey)) {
+            summary.dailyOdoMap.set(dateKey, {
+              minStart: startKm,
+              maxEnd: endKm,
+              totalDist: dist,
+              hasOdo: (startKm > 0 || endKm > 0)
+            });
+          } else {
+            const dayData = summary.dailyOdoMap.get(dateKey);
+            if (startKm > 0 || endKm > 0) {
+              dayData.minStart = dayData.minStart === 0 ? startKm : Math.min(dayData.minStart, startKm);
+              dayData.maxEnd = Math.max(dayData.maxEnd, endKm);
+              dayData.hasOdo = true;
+            } else {
+              dayData.totalDist += dist;
+            }
+          }
+
           summary.tollCharges += Number(row.ParkingCharges || 0) + Number(row.TollExpenses || 0);
         
           // Calculate extra hours for this trip
@@ -787,6 +952,21 @@ export const invoiceService = {
         flipkartAnnexureData = Array.from(flipkartMap.values()).map((summary: any) => {
           const actualDays = summary.daysActualDone.size;
           summary.daysActualDone = actualDays;
+
+          let computedTotalKMs = 0;
+          if (summary.dailyOdoMap) {
+            summary.dailyOdoMap.forEach((dayData: any) => {
+              if (dayData.hasOdo && dayData.maxEnd >= dayData.minStart && dayData.maxEnd > 0) {
+                computedTotalKMs += (dayData.maxEnd - dayData.minStart);
+              } else {
+                computedTotalKMs += (dayData.totalDist || 0);
+              }
+            });
+          } else {
+            computedTotalKMs = summary.totalKMs;
+          }
+          summary.totalKMs = computedTotalKMs;
+          delete summary.dailyOdoMap;
 
           if (summary.tollCharges === 0 && summary.commTollParking > 0) {
             summary.tollCharges = summary.commTollParking;
@@ -879,8 +1059,18 @@ export const invoiceService = {
       annexureData,
       flipkartAnnexureData,
       flipkartAdhocAnnexureData,
-      fallbackCustomerGSTIN,
-      fallbackCustomerAddress
+      fallbackCustomerGSTIN: fallbackCustomerGSTIN || fallbackProjectGSTIN || null,
+      fallbackProjectGSTIN,
+      fallbackProjectTypeOfBilling,
+      fallbackProjectGSTRate,
+      fallbackProjectBillingTenure,
+      fallbackProjectDetails,
+      fallbackCustomerAddress,
+      fallbackCustomerName,
+      fallbackCustomerCompanyName,
+      fallbackCustomerTypeOfServices,
+      fallbackCustomerServiceCode,
+      fallbackCustomerDetails
     };
   },
 

@@ -36,13 +36,62 @@ const generateVendorInvoiceNumber = async (): Promise<string> => {
 
 export const getVendors = async (req: Request, res: Response) => {
   try {
-    const [rows] = await pool.query(`
-      SELECT VendorID as id, VendorName as name, TypeOfCompany as type
+    const [rows]: any = await pool.query(`
+      SELECT 
+        VendorID as id, 
+        VendorName as name, 
+        VendorMobileNo as mobileNo,
+        VendorAlternateNo as alternateNo,
+        CompanyName as companyName,
+        TypeOfCompany as type, 
+        CompanyGST as gstNo, 
+        AddressOfCompany as companyAddress, 
+        VendorAddress as address,
+        HouseFlatNo,
+        StreetLocality,
+        City,
+        State,
+        PinCode,
+        Country
       FROM vendor 
       WHERE Status = 'active' OR Status = 'Active' OR Status IS NULL
       ORDER BY VendorName ASC
     `);
-    res.json(rows);
+
+    const formattedRows = rows.map((r: any) => {
+      const companyNameStr = (r.companyName || '').trim();
+      const typeOfCompStr = (r.type || '').trim();
+      const resolvedCompanyName = companyNameStr 
+        ? (typeOfCompStr && !companyNameStr.toLowerCase().includes(typeOfCompStr.toLowerCase()) ? `${companyNameStr} ${typeOfCompStr}` : companyNameStr)
+        : r.name;
+
+      const addrParts = [
+        r.HouseFlatNo,
+        r.StreetLocality,
+        r.City,
+        r.State,
+        r.PinCode,
+        r.Country
+      ].filter((p: any) => p && String(p).trim().length > 0);
+
+      const baseAddress = (r.address && r.address.trim() !== '' && r.address.trim() !== ',')
+        ? r.address.trim()
+        : (addrParts.length > 0 ? addrParts.join(', ') : (r.companyAddress || ''));
+
+      const contacts = [r.mobileNo, r.alternateNo]
+        .filter((c: any) => c && String(c).trim().length > 0 && String(c).trim() !== 'null' && String(c).trim() !== 'undefined');
+      const contactStr = contacts.length > 0 ? `Ph: ${contacts.join(' / ')}` : '';
+      const addressWithContact = [baseAddress, contactStr].filter(Boolean).join(' | ');
+
+      return {
+        ...r,
+        displayCompanyName: resolvedCompanyName,
+        address: baseAddress,
+        addressWithContact: addressWithContact
+      };
+    });
+
+    res.json(formattedRows);
   } catch (error) {
     console.error('Error fetching vendors:', error);
     res.status(500).json({ error: 'Failed to fetch vendors' });
@@ -59,14 +108,90 @@ export const getVendorTrips = async (req: Request, res: Response) => {
 
     // First get the vendor details
     const [vendorRows]: any = await pool.query(
-      'SELECT VendorName, VendorAddress, AccountHolderName, AccountNumber, IFSCCode, BankName, BranchName FROM vendor WHERE VendorID = ?', 
-      [vendorName]
+      `SELECT 
+        VendorID, 
+        VendorName, 
+        VendorCode, 
+        VendorMobileNo,
+        VendorAlternateNo,
+        CompanyName, 
+        TypeOfCompany, 
+        CompanyGST, 
+        VendorCompanyUdhyam, 
+        VendorCompanyPAN, 
+        StartDateOfCompany, 
+        AddressOfCompany, 
+        VendorAddress, 
+        HouseFlatNo, 
+        StreetLocality, 
+        City, 
+        State, 
+        PinCode, 
+        Country, 
+        AccountHolderName, 
+        AccountNumber, 
+        IFSCCode, 
+        BankName, 
+        BranchName, 
+        BranchAddress, 
+        BankCity, 
+        BankState 
+      FROM vendor 
+      WHERE VendorID = ? OR VendorName = ? OR CompanyName = ?`, 
+      [vendorName, vendorName, vendorName]
     );
     if (vendorRows.length === 0) {
       return res.status(404).json({ error: 'Vendor not found' });
     }
-    const vendorInfo = vendorRows[0];
-    const actualVendorName = vendorInfo.VendorName;
+    const rawVendor = vendorRows[0];
+    const companyNameStr = (rawVendor.CompanyName || '').trim();
+    const typeOfCompStr = (rawVendor.TypeOfCompany || '').trim();
+    const resolvedCompanyName = companyNameStr 
+      ? (typeOfCompStr && !companyNameStr.toLowerCase().includes(typeOfCompStr.toLowerCase()) ? `${companyNameStr} ${typeOfCompStr}` : companyNameStr)
+      : rawVendor.VendorName;
+
+    // Vendor Basic Address from VendorAddress or structured fields (HouseFlatNo, StreetLocality, City, State, PinCode, Country)
+    const addrParts = [
+      rawVendor.HouseFlatNo,
+      rawVendor.StreetLocality,
+      rawVendor.City,
+      rawVendor.State,
+      rawVendor.PinCode,
+      rawVendor.Country
+    ].filter((p: any) => p && String(p).trim().length > 0);
+
+    const resolvedVendorAddress = (rawVendor.VendorAddress && rawVendor.VendorAddress.trim() !== '' && rawVendor.VendorAddress.trim() !== ',')
+      ? rawVendor.VendorAddress.trim()
+      : (addrParts.length > 0 ? addrParts.join(', ') : (rawVendor.AddressOfCompany || ''));
+
+    // Vendor Contact numbers (VendorMobileNo, VendorAlternateNo)
+    const contacts = [rawVendor.VendorMobileNo, rawVendor.VendorAlternateNo]
+      .filter((c: any) => c && String(c).trim().length > 0 && String(c).trim() !== 'null' && String(c).trim() !== 'undefined');
+    const contactStr = contacts.length > 0 ? `Ph: ${contacts.join(' / ')}` : '';
+    const fullAddressWithContact = [resolvedVendorAddress, contactStr].filter(Boolean).join(' | ');
+
+    const vendorInfo = {
+      ...rawVendor,
+      VendorName: rawVendor.VendorName,
+      VendorMobileNo: rawVendor.VendorMobileNo || '',
+      VendorAlternateNo: rawVendor.VendorAlternateNo || '',
+      CompanyName: rawVendor.CompanyName,
+      TypeOfCompany: rawVendor.TypeOfCompany,
+      displayCompanyName: resolvedCompanyName,
+      vendorCompanyName: resolvedCompanyName,
+      CompanyGST: rawVendor.CompanyGST || '',
+      gstNo: rawVendor.CompanyGST || '',
+      AddressOfCompany: rawVendor.AddressOfCompany,
+      VendorAddress: resolvedVendorAddress || rawVendor.VendorAddress || '',
+      addressWithContact: fullAddressWithContact,
+      fullAddressWithContact: fullAddressWithContact,
+      AccountHolderName: rawVendor.AccountHolderName || rawVendor.CompanyName || rawVendor.VendorName,
+      AccountNumber: rawVendor.AccountNumber || '',
+      IFSCCode: rawVendor.IFSCCode || '',
+      BankName: rawVendor.BankName || '',
+      BranchName: rawVendor.BranchName || rawVendor.BranchAddress || rawVendor.BankCity || ''
+    };
+    const actualVendorName = rawVendor.VendorName;
 
     // Fetch commercial rates
     const placementType = tripType === 'adhoc' ? 'Adhoc' : 'Fixed';
@@ -427,6 +552,8 @@ export const getVendorTrips = async (req: Request, res: Response) => {
             totWithHike: agRate,
             workDays: workDays,
             actualDays: 0,
+            datesSet: new Set<string>(),
+            dailyOdoMap: new Map<string, { minStart: number, maxEnd: number, totalDist: number, hasOdo: boolean }>(),
             totKms: 0,
             extHrAmt: vehComm?.over_time_charges ? parseFloat(vehComm.over_time_charges) : 60,
             extHr: 0,
@@ -446,9 +573,52 @@ export const getVendorTrips = async (req: Request, res: Response) => {
           };
         }
         
-        misGroups[veh].actualDays += 1;
-        misGroups[veh].actualDeployed += 1;
-        misGroups[veh].totKms += ((Number(t.ClosingKM) || 0) - (Number(t.OpeningKM) || 0));
+        let tripDate = '';
+        if (t.date) {
+          tripDate = String(t.date);
+        } else if (t.ServiceDate) {
+          try {
+            tripDate = new Date(t.ServiceDate).toISOString().split('T')[0];
+          } catch (e) {
+            tripDate = String(t.ServiceDate);
+          }
+        } else if (t.TransactionDate) {
+          try {
+            tripDate = new Date(t.TransactionDate).toISOString().split('T')[0];
+          } catch (e) {
+            tripDate = String(t.TransactionDate);
+          }
+        }
+
+        if (tripDate && misGroups[veh].datesSet) {
+          misGroups[veh].datesSet.add(tripDate);
+        }
+
+        const startKm = Number(t.OpeningKM || 0);
+        const endKm = Number(t.ClosingKM || 0);
+        const dist = Number(endKm > startKm ? endKm - startKm : (t.Distance || 0));
+
+        if (tripDate && misGroups[veh].dailyOdoMap) {
+          if (!misGroups[veh].dailyOdoMap.has(tripDate)) {
+            misGroups[veh].dailyOdoMap.set(tripDate, {
+              minStart: startKm,
+              maxEnd: endKm,
+              totalDist: dist,
+              hasOdo: (startKm > 0 || endKm > 0)
+            });
+          } else {
+            const dayData = misGroups[veh].dailyOdoMap.get(tripDate)!;
+            if (startKm > 0 || endKm > 0) {
+              dayData.minStart = dayData.minStart === 0 ? startKm : Math.min(dayData.minStart, startKm);
+              dayData.maxEnd = Math.max(dayData.maxEnd, endKm);
+              dayData.hasOdo = true;
+            } else {
+              dayData.totalDist += dist;
+            }
+          }
+        }
+
+        misGroups[veh].actualDays = misGroups[veh].datesSet ? misGroups[veh].datesSet.size : (misGroups[veh].actualDays + 1);
         misGroups[veh].extKm += (Number(t.ExtraKM) || 0);
         misGroups[veh].extKmCharge += (Number(t.ExtraKMCost) || 0);
         misGroups[veh].toll += ((Number(t.TollExpenses) || 0) + (Number(t.ParkingCharges) || 0));
@@ -473,9 +643,26 @@ export const getVendorTrips = async (req: Request, res: Response) => {
       });
       
       const misData = Object.values(misGroups).map((m: any, idx: number) => {
-        const extKm = Math.max(0, m.totKms - (m.actualDays * m.perDayKm));
+        let computedTotalKMs = 0;
+        if (m.dailyOdoMap) {
+          m.dailyOdoMap.forEach((dayData: any) => {
+            if (dayData.hasOdo && dayData.maxEnd >= dayData.minStart && dayData.maxEnd > 0) {
+              computedTotalKMs += (dayData.maxEnd - dayData.minStart);
+            } else {
+              computedTotalKMs += (dayData.totalDist || 0);
+            }
+          });
+        } else {
+          computedTotalKMs = m.totKms;
+        }
+
+        const actualDays = m.datesSet && m.datesSet.size > 0 ? m.datesSet.size : (m.actualDays || 0);
+        delete m.datesSet;
+        delete m.dailyOdoMap;
+
+        const extKm = Math.max(0, computedTotalKMs - (actualDays * m.perDayKm));
         const extKmCharge = extKm * m.totExtKmRate;
-        const actualDeployed = m.perDayCost * m.actualDays;
+        const actualDeployed = m.perDayCost * actualDays;
         const totalAmt = extKmCharge + actualDeployed;
         const extHrCharges = m.extHr * m.extHrAmt;
         const finalAmt = extHrCharges + m.dcm + m.toll + totalAmt;
@@ -483,6 +670,7 @@ export const getVendorTrips = async (req: Request, res: Response) => {
         return {
           id: idx + 1,
           ...m,
+          actualDays: actualDays,
           extHrRate: Number(extHrCharges).toFixed(2),
           perDayCost: Number(m.perDayCost).toFixed(2),
           perDayKm: Number(m.perDayKm).toFixed(2),
@@ -624,30 +812,77 @@ export const saveVendorInvoice = async (req: Request, res: Response) => {
 
 export const getVendorInvoicesList = async (req: Request, res: Response) => {
   try {
-    const [rows] = await pool.query(`
+    const [rows]: any = await pool.query(`
       SELECT 
         vi.id, 
         vi.vendor_invoice_number AS invoice_number, 
         vi.vendor_name, 
+        v.VendorName AS raw_vendor_name,
+        v.CompanyName AS company_name,
+        v.TypeOfCompany AS type_of_company,
+        v.CompanyGST AS vendor_gst,
+        v.VendorMobileNo AS vendor_mobile,
+        v.VendorAlternateNo AS vendor_alt_mobile,
+        v.AddressOfCompany AS address_of_company,
+        v.VendorAddress AS raw_vendor_address,
+        v.HouseFlatNo,
+        v.StreetLocality,
+        v.City,
+        v.State,
+        v.PinCode,
+        v.Country,
         vi.customer_invoice_id, 
-        ci.invoice_number AS linked_customer_invoice,
+        ci.invoice_number AS linked_customer_invoice, 
         vi.date, 
         vi.due_date, 
         vi.amount, 
         vi.status, 
         vi.azure_blob_url,
-        v.VendorAddress AS vendor_address,
-        v.AccountHolderName AS account_holder_name,
+        COALESCE(v.AccountHolderName, v.CompanyName, vi.vendor_name) AS account_holder_name,
         v.AccountNumber AS account_number,
         v.IFSCCode AS ifsc_code,
         v.BankName AS bank_name,
         v.BranchName AS branch_name
       FROM vendor_invoices vi
       LEFT JOIN customer_invoices ci ON vi.customer_invoice_id = ci.id
-      LEFT JOIN vendor v ON vi.vendor_name = v.VendorName
+      LEFT JOIN vendor v ON (vi.vendor_name = v.VendorName OR vi.vendor_name = v.CompanyName OR CAST(vi.vendor_name AS CHAR) = CAST(v.VendorID AS CHAR))
       ORDER BY vi.id DESC
     `);
-    res.json(rows);
+
+    const formattedRows = rows.map((r: any) => {
+      const companyNameStr = (r.company_name || '').trim();
+      const typeOfCompStr = (r.type_of_company || '').trim();
+      const resolvedCompanyName = companyNameStr 
+        ? (typeOfCompStr && !companyNameStr.toLowerCase().includes(typeOfCompStr.toLowerCase()) ? `${companyNameStr} ${typeOfCompStr}` : companyNameStr)
+        : (r.raw_vendor_name || r.vendor_name);
+
+      const addrParts = [
+        r.HouseFlatNo,
+        r.StreetLocality,
+        r.City,
+        r.State,
+        r.PinCode,
+        r.Country
+      ].filter((p: any) => p && String(p).trim().length > 0);
+
+      const baseAddress = (r.raw_vendor_address && r.raw_vendor_address.trim() !== '' && r.raw_vendor_address.trim() !== ',')
+        ? r.raw_vendor_address.trim()
+        : (addrParts.length > 0 ? addrParts.join(', ') : (r.address_of_company || ''));
+
+      const contacts = [r.vendor_mobile, r.vendor_alt_mobile]
+        .filter((c: any) => c && String(c).trim().length > 0 && String(c).trim() !== 'null' && String(c).trim() !== 'undefined');
+      const contactStr = contacts.length > 0 ? `Ph: ${contacts.join(' / ')}` : '';
+      const addressWithContact = [baseAddress, contactStr].filter(Boolean).join(' | ');
+
+      return {
+        ...r,
+        company_name: resolvedCompanyName,
+        vendor_address: addressWithContact || baseAddress,
+        vendor_address_raw: baseAddress
+      };
+    });
+
+    res.json(formattedRows);
   } catch (error) {
     console.error('Error fetching vendor invoices:', error);
     res.status(500).json({ error: 'Failed to fetch vendor invoices' });
