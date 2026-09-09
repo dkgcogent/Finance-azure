@@ -1022,6 +1022,9 @@ export const invoiceService = {
           const fixRate = comm.fixed_rate !== undefined && comm.fixed_rate !== null
             ? Number(comm.fixed_rate)
             : Number(row.cc_fixed_rate || row.FreightFix || 0);
+          const handlingRate = (comm.handling_charges_applicable === 1 || comm.handling_charges_applicable === 'Yes' || comm.handling_charges_applicable === true || comm.handling_charges_applicable === '1')
+            ? Number(comm.handling_charges || 0)
+            : (comm.handling_charges !== undefined && comm.handling_charges !== null ? Number(comm.handling_charges) : Number(row.HandlingCharges || 0));
 
           const loc = row.consignorName || 'Unknown';
           if (!adhocMap.has(loc)) {
@@ -1032,6 +1035,7 @@ export const invoiceService = {
               fixRate: fixRate,
               extraKm: 0,
               extraKmRate: extraKmRate,
+              handlingRate: handlingRate,
               totalFixCost: 0,
               extraKmCharge: 0,
               handlingCharges: 0,
@@ -1042,12 +1046,15 @@ export const invoiceService = {
           const summary = adhocMap.get(loc);
           summary.noOfTrips += 1;
           summary.extraKm += Number(row.extraKm || 0);
+          if (handlingRate > 0) {
+            summary.handlingRate = handlingRate;
+          }
         });
         
         flipkartAdhocAnnexureData = Array.from(adhocMap.values()).map((summary: any) => {
           summary.totalFixCost = summary.fixRate * summary.noOfTrips;
           summary.extraKmCharge = summary.extraKmRate * summary.extraKm;
-          summary.handlingCharges = 100 * summary.noOfTrips;
+          summary.handlingCharges = (summary.handlingRate !== undefined ? summary.handlingRate : 0) * summary.noOfTrips;
           summary.amount = summary.totalFixCost + summary.extraKmCharge + summary.handlingCharges;
           return summary;
         });
