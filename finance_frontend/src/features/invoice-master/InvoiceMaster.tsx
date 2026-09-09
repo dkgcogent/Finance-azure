@@ -3,9 +3,9 @@ import { Invoice } from "@/data/mockData";
 import { useGlobalStore } from "@/store/useGlobalStore";
 import { useInvoices } from "./hooks/useInvoices";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowLeft, Download } from "lucide-react";
 import { InvoiceTable } from "./components/InvoiceTable";
-import { ArrowLeft, Filter, Download } from "lucide-react";
+import { InvoiceDetailsDrawer } from "./components/InvoiceDetailsDrawer";
 import { Button } from "@/components/ui/button";
 import { exportTableToExcel } from "@/lib/excelExportHelper";
 import { formatDate, calculateAgingDays } from "@/utils/format";
@@ -49,7 +49,7 @@ export default function InvoiceMaster() {
       r.invoiceDate ? formatDate(r.invoiceDate) : '',
       r.dueDate ? formatDate(r.dueDate) : '',
       Number(r.invoiceAmount || 0),
-      Number(r.totalGst || 0),
+      Number((r as any).totalGST ?? (r as any).totalGst ?? 0),
       Number(r.finalPayable || 0),
       calculateAgingDays(r.dueDate, r.paymentStatus) ?? '',
       r.paymentStatus || ''

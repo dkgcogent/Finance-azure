@@ -13,7 +13,7 @@ import {
 import { Invoice } from "@/data/mockData";
 import { formatCurrency, formatDate, calculateAgingDays } from "@/utils/format";
 import { Badge } from "@/components/ui/badge";
-import { ArrowUpDown, Search, Filter, Download, Columns, FileText } from "lucide-react";
+import { ArrowUpDown, Search, Download, Columns, FileText } from "lucide-react";
 import { exportTableToExcel } from "@/lib/excelExportHelper";
 
 interface InvoiceTableProps {
@@ -160,7 +160,7 @@ export function InvoiceTable({ data, onRowClick, globalFilter, setGlobalFilter }
       r.invoiceDate ? formatDate(r.invoiceDate) : '',
       r.dueDate ? formatDate(r.dueDate) : '',
       Number(r.invoiceAmount || 0),
-      Number(r.totalGst || 0),
+      Number((r as any).totalGST ?? (r as any).totalGst ?? 0),
       Number(r.finalPayable || 0),
       calculateAgingDays(r.dueDate, r.paymentStatus) ?? '',
       r.paymentStatus || ''
