@@ -4,6 +4,11 @@ import { authenticateToken } from '../../../middleware/auth';
 
 const router = Router();
 
-router.get('/sheet', authenticateToken, salaryController.getSalarySheet);
+// Apply auth middleware to all salary routes
+router.use(authenticateToken);
+
+router.get('/sheet', salaryController.getSalarySheet);
+router.get('/pending-approvals', salaryController.getPendingApprovals);
+router.put('/sheets/:id/status', salaryController.updateSheetStatus);
 
 export default router;
