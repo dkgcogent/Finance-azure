@@ -115,6 +115,8 @@ export function AppRouter() {
           <Route path="/vendor-bills" element={<React.Suspense fallback={<div className="p-8">Loading...</div>}><VendorBills /></React.Suspense>} />
           <Route path="/invoice-master" element={<React.Suspense fallback={<div className="p-8">Loading...</div>}><GlobalInvoiceMaster /></React.Suspense>} />
           <Route path="/payment-sheet" element={<React.Suspense fallback={<div className="p-8">Loading...</div>}><PaymentSheet /></React.Suspense>} />
+          <Route path="/payment-sheets" element={<React.Suspense fallback={<div className="p-8">Loading...</div>}><PaymentSheet /></React.Suspense>} />
+          <Route path="/imprest-payment-sheets" element={<React.Suspense fallback={<div className="p-8">Loading...</div>}><PaymentSheet /></React.Suspense>} />
           <Route path="/vendor-payment-sheet" element={<React.Suspense fallback={<div className="p-8">Loading...</div>}><VendorPaymentSheet /></React.Suspense>} />
           <Route path="/salary-payment-sheet" element={<React.Suspense fallback={<div className="p-8">Loading...</div>}><SalaryPaymentSheet /></React.Suspense>} />
           <Route path="/adhoc-vehicles" element={<React.Suspense fallback={<div className="p-8">Loading...</div>}><AdhocVehicles /></React.Suspense>} />

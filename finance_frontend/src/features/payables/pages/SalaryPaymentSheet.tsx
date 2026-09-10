@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react"
+import { Link } from "react-router-dom"
 import { ColumnDef } from "@tanstack/react-table"
 import { DataTable, SortableHeader } from "@/components/shared/DataTable"
 import { Card, CardContent } from "@/components/ui/card"
@@ -17,7 +18,9 @@ import {
   ShieldAlert,
   ArrowLeft,
   ChevronDown,
-  Loader2
+  Loader2,
+  ArrowUpRight,
+  Info
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import html2pdf from "html2pdf.js"
@@ -36,7 +39,6 @@ type PaymentEntry = {
 }
 
 export default function SalaryPaymentSheet() {
-  const [ceoApproved, setCeoApproved] = useState(false)
   const [showPrintMenu, setShowPrintMenu] = useState(false)
   
   const currentDate = new Date();
@@ -56,7 +58,7 @@ export default function SalaryPaymentSheet() {
   });
 
   const paymentData: PaymentEntry[] = useMemo(() => {
-    if (!salaryData) return [];
+    if (!salaryData || !Array.isArray(salaryData)) return [];
     return salaryData.map((row: any, index: number) => ({
       id: String(index),
       employeeName: row.EmployeeName || "Unknown",
@@ -70,6 +72,8 @@ export default function SalaryPaymentSheet() {
     }));
   }, [salaryData, month, year]);
 
+  const isApproved = paymentData.length > 0;
+
   const columns = useMemo<ColumnDef<PaymentEntry>[]>(
     () => [
       {
@@ -80,7 +84,7 @@ export default function SalaryPaymentSheet() {
       {
         accessorKey: "employeeCode",
         header: ({ column }) => <SortableHeader column={column} title="Employee Code" />,
-        cell: ({ row }) => <div className="whitespace-nowrap">{row.getValue("employeeCode")}</div>,
+        cell: ({ row }) => <div className="whitespace-nowrap font-mono text-xs">{row.getValue("employeeCode")}</div>,
       },
       {
         accessorKey: "beneficiaryAccountNo",
@@ -157,7 +161,7 @@ export default function SalaryPaymentSheet() {
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.beneficiaryAccountNo}</td>
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.ifscCode}</td>
                 <td style="border: 1px solid #ccc; padding: 8px;">${d.beneficiaryName}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">₹${d.amount}</td>
+                <td style="border: 1px solid #ccc; padding: 8px;">₹${d.amount.toLocaleString('en-IN')}</td>
               </tr>
             `).join('')}
           </tbody>
@@ -222,6 +226,7 @@ export default function SalaryPaymentSheet() {
   };
 
   const totalPayable = paymentData.reduce((sum, item) => sum + item.amount, 0)
+  const monthName = new Date(2000, month - 1).toLocaleString('default', { month: 'long' })
 
   return (
     <div className="flex-1 space-y-6 pb-8">
@@ -230,17 +235,14 @@ export default function SalaryPaymentSheet() {
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-3xl font-bold tracking-tight">Salary Payment Sheet</h2>
-            <div className="hidden gap-2">
-              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1 px-3 py-1">
-                <CheckCircle2 className="h-3 w-3" /> Ops Head Approved
-              </Badge>
-              {ceoApproved ? (
+            <div className="flex gap-2">
+              {isApproved ? (
                 <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1 px-3 py-1">
-                  <CheckCircle2 className="h-3 w-3" /> CEO Approved
+                  <CheckCircle2 className="h-3.5 w-3.5" /> CEO Approved (Final Sign-off)
                 </Badge>
               ) : (
                 <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-1 px-3 py-1">
-                  <ShieldAlert className="h-3 w-3" /> Pending CEO Approval
+                  <ShieldAlert className="h-3.5 w-3.5" /> Pending Final Approval
                 </Badge>
               )}
             </div>
@@ -270,7 +272,7 @@ export default function SalaryPaymentSheet() {
           </select>
 
           <div className="relative ml-2">
-            <Button variant="outline" onClick={togglePrintMenu}>
+            <Button variant="outline" onClick={togglePrintMenu} disabled={!isApproved}>
               <Printer className="mr-2 h-4 w-4" />
               Print Sheet
               <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" />
@@ -291,24 +293,6 @@ export default function SalaryPaymentSheet() {
               </div>
             )}
           </div>
-
-          {!ceoApproved ? (
-            <Button className="hidden bg-muted text-muted-foreground cursor-not-allowed" onClick={() => alert("CEO Approval is required before processing payments.")}>
-              <Lock className="mr-2 h-4 w-4" />
-              Process Payment (Locked)
-            </Button>
-          ) : (
-            <Button className="hidden bg-emerald-600 hover:bg-emerald-700">
-              <CheckCircle2 className="mr-2 h-4 w-4" />
-              Process Bank Transfer
-            </Button>
-          )}
-        </div>
-        
-        {/* DEV ONLY TOGGLE TO SHOW STATE */}
-        <div className="absolute top-2 right-2 flex items-center gap-2">
-           <span className="text-[10px] text-muted-foreground uppercase">Dev Mock:</span>
-           <input type="checkbox" checked={ceoApproved} onChange={(e) => setCeoApproved(e.target.checked)} className="h-3 w-3"/>
         </div>
       </div>
 
@@ -319,7 +303,7 @@ export default function SalaryPaymentSheet() {
             <div className="w-full md:w-64">
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input className="pl-8 h-9" placeholder="Search name or code..." />
+                <Input className="pl-8 h-9" placeholder="Search name or code..." disabled={!isApproved} />
               </div>
             </div>
           </div>
@@ -332,6 +316,26 @@ export default function SalaryPaymentSheet() {
           </div>
         </CardContent>
       </Card>
+
+      {!isApproved && !isLoading && (
+        <div className="p-6 rounded-xl border border-amber-200 bg-amber-50/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <Info className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+            <div>
+              <h4 className="font-semibold text-amber-900">No Approved Salary Payment Sheet for {monthName} {year}</h4>
+              <p className="text-sm text-amber-700 mt-1">
+                Salary payment sheets submitted from HRMS require executive approval before they can be processed and downloaded here.
+              </p>
+            </div>
+          </div>
+          <Link to="/approvals/payment-sheet-final" className="shrink-0">
+            <Button size="sm" variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100">
+              Check Final Approvals
+              <ArrowUpRight className="ml-1.5 h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
+      )}
 
       <div className="border rounded-lg bg-background shadow-sm overflow-hidden relative min-h-[200px]">
         {isLoading && (
