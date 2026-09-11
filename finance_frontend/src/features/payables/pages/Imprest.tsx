@@ -23,14 +23,6 @@ const imprestModules = [
     path: "/imprest/list",
     color: "text-emerald-500",
     bg: "bg-emerald-500/10"
-  },
-  {
-    title: "Payment Sheets",
-    description: "View and download generated imprest payment sheets.",
-    icon: FileBarChart2,
-    path: "/payment-sheet?view=list",
-    color: "text-purple-500",
-    bg: "bg-purple-500/10"
   }
 ]
 
@@ -44,7 +36,7 @@ export default function ImprestManagement() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 max-w-4xl">
         {imprestModules.map((module, index) => {
           const Icon = module.icon
 
