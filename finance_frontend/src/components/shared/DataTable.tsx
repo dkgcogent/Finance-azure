@@ -266,12 +266,14 @@ export function DataTable<TData, TValue>({
   )
 }
 
-export function SortableHeader({ column, title }: { column: any, title: string }) {
+import { cn } from "@/lib/utils"
+
+export function SortableHeader({ column, title, className }: { column: any, title: string, className?: string }) {
   return (
     <Button
       variant="ghost"
       onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-      className="h-8 -ml-4 whitespace-nowrap"
+      className={cn("h-8 -ml-4 whitespace-nowrap", className)}
     >
       {title}
       <ArrowUpDown className="ml-2 h-4 w-4 opacity-50" />

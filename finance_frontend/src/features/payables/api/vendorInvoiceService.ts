@@ -2,15 +2,35 @@ import axios from 'axios';
 import { API_BASE_URL } from '@/lib/api';
 
 export interface Vendor {
-  id: number;
+  id: number | string;
   name: string;
-  type: string;
+  type?: string;
+  mobileNo?: string;
+  alternateNo?: string;
+  companyName?: string;
+  displayCompanyName?: string;
+  companyNameWithVendor?: string;
+  rawCompanyName?: string;
+  vendorName?: string;
+  gstNo?: string;
+  companyAddress?: string;
+  address?: string;
+  addressWithContact?: string;
+  HouseFlatNo?: string;
+  StreetLocality?: string;
+  City?: string;
+  State?: string;
+  PinCode?: string;
+  Country?: string;
 }
 
 export interface VendorInvoice {
   id: number;
   invoice_number: string;
   vendor_name: string;
+  company_name?: string;
+  raw_company_name?: string;
+  vendor_person_name?: string;
   date: string;
   due_date: string;
   amount: string;
@@ -18,6 +38,10 @@ export interface VendorInvoice {
   azure_blob_url: string | null;
   linked_customer_invoice: string | null;
   vendor_address?: string;
+  vendor_address_raw?: string;
+  address_of_company?: string;
+  vendor_gst?: string;
+  gst_no?: string;
   account_holder_name?: string;
   account_number?: string;
   ifsc_code?: string;

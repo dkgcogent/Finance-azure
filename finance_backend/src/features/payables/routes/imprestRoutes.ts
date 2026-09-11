@@ -12,4 +12,9 @@ router.get('/', imprestController.getImprests);
 router.get('/tms-data', imprestController.getTmsData);
 router.put('/:id/status', imprestController.updateImprestStatus);
 
+// Bank Payment Sheet storage & history routes
+router.post('/bank-payment-sheets', imprestController.saveBankPaymentSheet);
+router.get('/bank-payment-sheets', imprestController.getBankPaymentSheets);
+router.get('/bank-payment-sheets/:batchId', imprestController.getBankPaymentSheetBatch);
+
 export default router;

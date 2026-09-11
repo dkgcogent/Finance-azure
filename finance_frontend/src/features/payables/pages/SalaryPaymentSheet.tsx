@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from "react"
-import { Link } from "react-router-dom"
+import React, { useMemo, useState, useEffect } from "react"
+import { useSearchParams } from "react-router-dom"
 import { ColumnDef } from "@tanstack/react-table"
 import { DataTable, SortableHeader } from "@/components/shared/DataTable"
 import { Card, CardContent } from "@/components/ui/card"
@@ -17,17 +17,26 @@ import {
   FileSpreadsheet,
   ShieldAlert,
   ArrowLeft,
+  ArrowRight,
   ChevronDown,
   Loader2,
-  ArrowUpRight,
-  Info
+  Calendar,
+  DollarSign,
+  Users,
+  Eye,
+  Plus,
+  Layers,
+  Sparkles
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { Modal } from "@/components/ui/modal"
 import html2pdf from "html2pdf.js"
-import { exportTableToExcel } from "@/lib/excelExportHelper"
+import { generateImprestBankPaymentExcel, generateNormalPaymentExcel } from "../utils/generateImprestPaymentExcel"
+import { exportStructuredPaymentPDF } from "../utils/exportPaymentPDF"
 
 type PaymentEntry = {
   id: string
+  date: string
   employeeName: string
   employeeCode: string
   beneficiaryAccountNo: string
@@ -38,14 +47,66 @@ type PaymentEntry = {
   remarksBeneficiary: string
 }
 
+type SavedBankSheet = {
+  batchId: string
+  excelName: string
+  month: string
+  dateFrom: string
+  dateTo: string
+  totalEntries: number
+  totalAmount: number
+  createdAt: string
+  updatedAt: string
+}
+
 export default function SalaryPaymentSheet() {
+  const [searchParams] = useSearchParams()
+  const initialView = searchParams.get("view") === "list" ? "list" : "sheet"
+  const [viewMode, setViewMode] = useState<"sheet" | "list">(initialView)
+
   const [showPrintMenu, setShowPrintMenu] = useState(false)
+  const [savedBankSheets, setSavedBankSheets] = useState<SavedBankSheet[]>([])
+  const [isSavedLoading, setIsSavedLoading] = useState(false)
   
   const currentDate = new Date();
   const [month, setMonth] = useState(currentDate.getMonth() + 1)
   const [year, setYear] = useState(currentDate.getFullYear())
+  const [fromDate, setFromDate] = useState('')
+  const [toDate, setToDate] = useState('')
+
+  // Generate Bank Payment Sheet Modal States
+  const getTodayString = () => {
+    const today = new Date();
+    return today.toISOString().split('T')[0];
+  };
+
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
+  const [dateSelectionType, setDateSelectionType] = useState<"range" | "single" | "month">("range")
+  const [modalFromDate, setModalFromDate] = useState(getTodayString())
+  const [modalToDate, setModalToDate] = useState(getTodayString())
+  const [modalSingleDate, setModalSingleDate] = useState(getTodayString())
+  const [modalMonth, setModalMonth] = useState(currentDate.getMonth() + 1)
+  const [modalYear, setModalYear] = useState(currentDate.getFullYear())
+  const [isModalSubmitting, setIsModalSubmitting] = useState(false)
 
   const togglePrintMenu = () => setShowPrintMenu(!showPrintMenu)
+
+  // Fetch saved salary bank payment sheets from database
+  const fetchSavedBankSheets = async () => {
+    try {
+      setIsSavedLoading(true);
+      const res = await apiClient.get('/salaries/bank-payment-sheets');
+      setSavedBankSheets(res.data || []);
+    } catch (error) {
+      console.error("Failed to fetch saved salary bank payment sheets:", error);
+    } finally {
+      setIsSavedLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSavedBankSheets();
+  }, []);
 
   const { data: salaryData, isLoading } = useQuery({
     queryKey: ['salarySheet', month, year],
@@ -59,23 +120,420 @@ export default function SalaryPaymentSheet() {
 
   const paymentData: PaymentEntry[] = useMemo(() => {
     if (!salaryData || !Array.isArray(salaryData)) return [];
-    return salaryData.map((row: any, index: number) => ({
-      id: String(index),
-      employeeName: row.EmployeeName || "Unknown",
-      employeeCode: row.EmployeeCode || "N/A",
-      beneficiaryAccountNo: row.AccountNumber || "N/A",
-      ifscCode: row.IFSCCode || row.ifsc_code || "SBIN0001234",
-      beneficiaryName: row.AccountHolder || "N/A",
-      amount: Number(row.NetPayableAmount || 0),
-      remarksClient: "Salary Payment",
-      remarksBeneficiary: `Salary for ${month}/${year}`
-    }));
-  }, [salaryData, month, year]);
+    const formattedMonth = String(month).padStart(2, '0');
+    const mapped = salaryData.map((row: any, index: number) => {
+      const empName = row.EmployeeName || "Unknown";
+      const rowDate = row.ApprovedDate || row.approved_date || row.approvedDate || row.PaymentDate || row.payment_date || row.Date || row.date || `${year}-${formattedMonth}-01`;
+      return {
+        id: String(index),
+        date: typeof rowDate === 'string' && rowDate.includes('T') ? rowDate.split('T')[0] : String(rowDate),
+        employeeName: empName,
+        employeeCode: row.EmployeeCode || "N/A",
+        beneficiaryAccountNo: row.AccountNumber || "N/A",
+        ifscCode: row.IFSCCode || row.ifsc_code || "SBIN0001234",
+        beneficiaryName: row.AccountHolder || "N/A",
+        amount: Number(row.NetPayableAmount || 0),
+        remarksClient: "Salary Payment",
+        remarksBeneficiary: `Salary of ${empName}`
+      };
+    });
+
+    return mapped.filter(item => {
+      if (fromDate && toDate) {
+        return item.date >= fromDate && item.date <= toDate;
+      } else if (fromDate) {
+        return item.date >= fromDate;
+      } else if (toDate) {
+        return item.date <= toDate;
+      }
+      return true;
+    });
+  }, [salaryData, month, year, fromDate, toDate]);
 
   const isApproved = paymentData.length > 0;
+  const fileSuffix = fromDate && toDate ? `${fromDate}_to_${toDate}` : fromDate ? `from_${fromDate}` : toDate ? `to_${toDate}` : `${year}-${String(month).padStart(2, '0')}`;
+
+  // Save to database table SalaryBankPaymentSheet & download Excel
+  const saveAndDownloadBankSheet = async (
+    entries: PaymentEntry[],
+    suffix: string,
+    fDate?: string,
+    tDate?: string
+  ) => {
+    if (!entries.length) return;
+
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const derivedMonth = `${monthNames[month - 1]} ${year}`;
+    const excelName = `Salary_Payment_Bank_Format_${suffix}.xlsx`;
+
+    const rowsToSave = entries.map(d => ({
+      transactionType: "IFC",
+      debitAccountNo: "163905500140",
+      ifscCode: d.ifscCode || "SBIN0001234",
+      beneficiaryAccountNo: d.beneficiaryAccountNo || "",
+      beneficiaryName: d.beneficiaryName || d.employeeName,
+      amount: d.amount,
+      remarksClient: d.remarksClient || "SALARY",
+      remarksBeneficiary: d.remarksBeneficiary || `Salary of ${d.employeeName}`
+    }));
+
+    try {
+      await apiClient.post('/salaries/bank-payment-sheets', {
+        excelName,
+        month: derivedMonth,
+        dateFrom: fDate || fromDate || '',
+        dateTo: tDate || toDate || '',
+        rows: rowsToSave
+      });
+      fetchSavedBankSheets();
+    } catch (err) {
+      console.error("Error saving salary bank payment sheet to database:", err);
+    }
+
+    await generateImprestBankPaymentExcel(rowsToSave, suffix, "Salary_Payment_Bank_Format");
+  };
+
+  const handleGenerateBankPaymentSheet = async () => {
+    try {
+      setIsModalSubmitting(true);
+      let targetFrom = '';
+      let targetTo = '';
+      let targetSingle = '';
+      let targetMonth = month;
+      let targetYear = year;
+      let targetSuffix = '';
+
+      if (dateSelectionType === "single") {
+        targetSingle = modalSingleDate;
+        targetSuffix = modalSingleDate;
+        if (modalSingleDate) {
+          const d = new Date(modalSingleDate);
+          if (!isNaN(d.getTime())) {
+            targetMonth = d.getMonth() + 1;
+            targetYear = d.getFullYear();
+          }
+        }
+      } else if (dateSelectionType === "range") {
+        targetFrom = modalFromDate;
+        targetTo = modalToDate;
+        targetSuffix = `${modalFromDate}_to_${modalToDate}`;
+        if (modalFromDate) {
+          const d = new Date(modalFromDate);
+          if (!isNaN(d.getTime())) {
+            targetMonth = d.getMonth() + 1;
+            targetYear = d.getFullYear();
+          }
+        }
+      } else if (dateSelectionType === "month") {
+        targetMonth = modalMonth;
+        targetYear = modalYear;
+        targetSuffix = `${modalYear}-${String(modalMonth).padStart(2, '0')}`;
+      }
+
+      // Fetch salary data for target month/year
+      let rawSalaryRows: any[] = [];
+      if (targetMonth === month && targetYear === year && salaryData) {
+        rawSalaryRows = Array.isArray(salaryData) ? salaryData : [];
+      } else {
+        const res = await apiClient.get('/salaries/sheet', {
+          params: { month: targetMonth, year: targetYear }
+        });
+        rawSalaryRows = res.data || [];
+      }
+
+      const formattedMonth = String(targetMonth).padStart(2, '0');
+      const mapped = rawSalaryRows.map((row: any, index: number) => {
+        const empName = row.EmployeeName || "Unknown";
+        const rowDate = row.ApprovedDate || row.approved_date || row.approvedDate || row.PaymentDate || row.payment_date || row.Date || row.date || `${targetYear}-${formattedMonth}-01`;
+        return {
+          id: String(index),
+          date: typeof rowDate === 'string' && rowDate.includes('T') ? rowDate.split('T')[0] : String(rowDate),
+          employeeName: empName,
+          employeeCode: row.EmployeeCode || "N/A",
+          beneficiaryAccountNo: row.AccountNumber || "N/A",
+          ifscCode: row.IFSCCode || row.ifsc_code || "SBIN0001234",
+          beneficiaryName: row.AccountHolder || "N/A",
+          amount: Number(row.NetPayableAmount || 0),
+          remarksClient: "Salary Payment",
+          remarksBeneficiary: `Salary of ${empName}`
+        };
+      });
+
+      const filtered = mapped.filter(item => {
+        if (targetFrom && targetTo) {
+          return item.date >= targetFrom && item.date <= targetTo;
+        } else if (targetFrom) {
+          return item.date >= targetFrom;
+        } else if (targetTo) {
+          return item.date <= targetTo;
+        } else if (targetSingle) {
+          return item.date === targetSingle;
+        }
+        return true;
+      });
+
+      if (filtered.length === 0) {
+        alert("No approved salary payout records found for the selected timeframe. Please ensure the salary sheet is approved by CEO in Final Approvals.");
+        return;
+      }
+
+      const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+      const derivedMonth = `${monthNames[targetMonth - 1]} ${targetYear}`;
+      const excelName = `Salary_Payment_Bank_Format_${targetSuffix}.xlsx`;
+
+      const rowsToSave = filtered.map(d => ({
+        transactionType: "IFC",
+        debitAccountNo: "163905500140",
+        ifscCode: d.ifscCode || "SBIN0001234",
+        beneficiaryAccountNo: d.beneficiaryAccountNo || "",
+        beneficiaryName: d.beneficiaryName || d.employeeName,
+        amount: d.amount,
+        remarksClient: d.remarksClient || "SALARY",
+        remarksBeneficiary: d.remarksBeneficiary || `Salary of ${d.employeeName}`
+      }));
+
+      try {
+        await apiClient.post('/salaries/bank-payment-sheets', {
+          excelName,
+          month: derivedMonth,
+          dateFrom: targetFrom || targetSingle || '',
+          dateTo: targetTo || targetSingle || '',
+          rows: rowsToSave
+        });
+        await fetchSavedBankSheets();
+      } catch (err) {
+        console.error("Error saving salary bank payment sheet to database:", err);
+      }
+
+      await generateImprestBankPaymentExcel(rowsToSave, targetSuffix, "Salary_Payment_Bank_Format");
+
+      setIsGenerateModalOpen(false);
+    } catch (err) {
+      console.error("Failed to generate bank payment sheet:", err);
+      alert("Failed to generate salary bank payment sheet");
+    } finally {
+      setIsModalSubmitting(false);
+    }
+  };
+
+  const downloadPDF = () => {
+    setShowPrintMenu(false);
+    if (!paymentData.length) return;
+
+    exportStructuredPaymentPDF({
+      title: "Salary Payment Sheet",
+      subTitle: "Monthly Employee Wage & Net Salary Disbursement",
+      periodLabel: `${monthName} ${year}`,
+      batchId: `PS-SAL-${fileSuffix}`,
+      type: "salary",
+      rows: paymentData.map(d => ({
+        date: d.date,
+        name: d.employeeName,
+        code: d.employeeCode,
+        accountNo: d.beneficiaryAccountNo,
+        ifscCode: d.ifscCode,
+        beneficiaryName: d.beneficiaryName,
+        amount: d.amount,
+        remarks: d.remarksBeneficiary || d.remarksClient
+      })),
+      totalAmount: totalPayable,
+      fileName: `Salary_Payment_${month}_${year}.pdf`
+    });
+  };
+
+  const downloadExcel = async () => {
+    setShowPrintMenu(false);
+    if (!paymentData.length) return;
+
+    const normalColumns = [
+      { header: "Date", key: "date", width: 15 },
+      { header: "Employee Name", key: "employeeName", width: 25 },
+      { header: "Employee Code", key: "employeeCode", width: 18 },
+      { header: "Beneficiary Account No", key: "beneficiaryAccountNo", width: 24 },
+      { header: "IFSC Code", key: "ifscCode", width: 18 },
+      { header: "Beneficiary Name", key: "beneficiaryName", width: 25 },
+      { header: "Amount (₹)", key: "amount", width: 18 },
+      { header: "Remarks for Client", key: "remarksClient", width: 22 },
+      { header: "Remarks for Beneficiary", key: "remarksBeneficiary", width: 25 }
+    ];
+
+    const fileName = `Salary_Payment_Sheet_${fileSuffix}.xlsx`;
+    await generateNormalPaymentExcel(normalColumns, paymentData, fileName);
+  };
+
+  const downloadTXT = () => {
+    setShowPrintMenu(false);
+    if (!paymentData.length) return;
+    
+    const txtContent = paymentData.map(d => `${d.date || ''}|${d.beneficiaryAccountNo}|${d.ifscCode}|${d.amount}|${d.employeeName}|${d.remarksBeneficiary}`).join('\n');
+    
+    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Salary_Payment_Bank_Upload_${month}_${year}.txt`;
+    link.click();
+  };
+
+  // Download directly from saved database sheet
+  const downloadSavedBatchExcel = async (sheet: SavedBankSheet) => {
+    try {
+      const res = await apiClient.get(`/salaries/bank-payment-sheets/${sheet.batchId}`);
+      const batchRows: any[] = res.data || [];
+      if (batchRows.length === 0) {
+        alert("No records found for this saved sheet");
+        return;
+      }
+
+      const excelPrefix = sheet.excelName.replace(/\.xlsx$/i, '');
+      await generateImprestBankPaymentExcel(
+        batchRows.map(r => ({
+          transactionType: r.transaction_type || "IFC",
+          debitAccountNo: r.debit_account_no || "163905500140",
+          ifscCode: r.ifsc_code || "SBIN0001234",
+          beneficiaryAccountNo: r.beneficiary_account_no || "",
+          beneficiaryName: r.beneficiary_name || "",
+          amount: Number(r.amount) || 0,
+          remarksClient: r.remarks_client || "SALARY",
+          remarksBeneficiary: r.remarks_beneficiary || `Salary of ${r.beneficiary_name}`
+        })),
+        "",
+        excelPrefix
+      );
+    } catch (err) {
+      console.error("Failed to download saved salary bank payment sheet:", err);
+      alert("Failed to download saved salary bank payment sheet");
+    }
+  };
+
+  // View saved batch details
+  const viewSavedBatchDetails = async (sheet: SavedBankSheet) => {
+    try {
+      setFromDate(sheet.dateFrom || '');
+      setToDate(sheet.dateTo || '');
+      setViewMode('sheet');
+    } catch (err) {
+      console.error("Failed to open saved batch details", err);
+    }
+  };
+
+  // Columns for the Saved Salary Bank Payment Sheets List Table
+  const savedBankSheetColumns = useMemo<ColumnDef<SavedBankSheet>[]>(
+    () => [
+      {
+        accessorKey: "excelName",
+        header: ({ column }) => <SortableHeader column={column} title="Bank Payment Sheet Excel name" />,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-200">
+              <FileSpreadsheet className="h-4 w-4" />
+            </div>
+            <div>
+              <span className="font-semibold text-zinc-900 text-xs block">{row.getValue("excelName")}</span>
+              <span className="text-[11px] text-muted-foreground font-mono">{row.original.batchId}</span>
+            </div>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "month",
+        header: ({ column }) => <SortableHeader column={column} title="Month" />,
+        cell: ({ row }) => (
+          <div className="font-medium text-xs text-zinc-700">
+            {row.getValue("month") || "-"}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "dateFrom",
+        header: ({ column }) => <SortableHeader column={column} title="Date to (From)" />,
+        cell: ({ row }) => (
+          <div className="whitespace-nowrap font-medium text-xs text-zinc-700 flex items-center gap-1">
+            <Calendar className="h-3.5 w-3.5 text-zinc-400" />
+            {row.getValue("dateFrom") || "-"}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "dateTo",
+        header: ({ column }) => <SortableHeader column={column} title="Date End (To)" />,
+        cell: ({ row }) => (
+          <div className="whitespace-nowrap font-medium text-xs text-zinc-700 flex items-center gap-1">
+            <Calendar className="h-3.5 w-3.5 text-zinc-400" />
+            {row.getValue("dateTo") || "-"}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "totalEntries",
+        header: ({ column }) => <SortableHeader column={column} title="Beneficiaries" />,
+        cell: ({ row }) => (
+          <div className="whitespace-nowrap text-xs font-medium text-zinc-700 flex items-center gap-1.5">
+            <Users className="h-3.5 w-3.5 text-zinc-400" />
+            <span>{row.getValue("totalEntries")} Employees</span>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "totalAmount",
+        header: ({ column }) => <SortableHeader column={column} title="Total Net Payable" />,
+        cell: ({ row }) => (
+          <div className="font-bold text-primary text-xs whitespace-nowrap">
+            {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(Number(row.getValue("totalAmount")) || 0)}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "createdAt",
+        header: ({ column }) => <SortableHeader column={column} title="Generated On" />,
+        cell: ({ row }) => {
+          const d = row.getValue("createdAt") ? new Date(row.getValue("createdAt") as string) : null;
+          return (
+            <div className="text-xs text-muted-foreground whitespace-nowrap">
+              {d ? d.toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
+            </div>
+          );
+        },
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">Download</div>,
+        cell: ({ row }) => {
+          const sheet = row.original;
+          return (
+            <div className="flex items-center justify-end">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => downloadSavedBatchExcel(sheet)}
+                title="Download Bank Payment Sheet Excel"
+                className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1 px-2.5 cursor-pointer shadow-xs"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download Excel
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    []
+  );
+
+  const totalSavedAmount = useMemo(() => {
+    return savedBankSheets.reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  }, [savedBankSheets]);
+
+  const totalSavedBeneficiaries = useMemo(() => {
+    return savedBankSheets.reduce((sum, b) => sum + Number(b.totalEntries || 0), 0);
+  }, [savedBankSheets]);
 
   const columns = useMemo<ColumnDef<PaymentEntry>[]>(
     () => [
+      {
+        accessorKey: "date",
+        header: ({ column }) => <SortableHeader column={column} title="Date" />,
+        cell: ({ row }) => <div className="whitespace-nowrap font-mono text-xs">{row.getValue("date")}</div>,
+      },
       {
         accessorKey: "employeeName",
         header: ({ column }) => <SortableHeader column={column} title="Employee Name" />,
@@ -111,8 +569,12 @@ export default function SalaryPaymentSheet() {
       },
       {
         accessorKey: "amount",
-        header: ({ column }) => <SortableHeader column={column} title="Amount (₹)" />,
-        cell: ({ row }) => <div className="text-right font-bold text-primary">{new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(row.getValue("amount"))}</div>,
+        header: ({ column }) => (
+          <div className="flex justify-center">
+            <SortableHeader column={column} title="Amount (₹)" className="ml-0" />
+          </div>
+        ),
+        cell: ({ row }) => <div className="text-center font-bold text-primary">{new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(row.getValue("amount"))}</div>,
       },
       {
         accessorKey: "remarksClient",
@@ -132,102 +594,266 @@ export default function SalaryPaymentSheet() {
       },
     ],
     []
-  )
-
-  const downloadPDF = () => {
-    setShowPrintMenu(false);
-    if (!paymentData.length) return;
-    
-    const element = document.createElement('div');
-    element.innerHTML = `
-      <div style="padding: 20px; font-family: sans-serif;">
-        <h2 style="text-align: center;">Salary Payment Sheet - ${month}/${year}</h2>
-        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-          <thead>
-            <tr>
-              <th style="border: 1px solid #ccc; padding: 8px;">Emp Name</th>
-              <th style="border: 1px solid #ccc; padding: 8px;">Emp Code</th>
-              <th style="border: 1px solid #ccc; padding: 8px;">Account No</th>
-              <th style="border: 1px solid #ccc; padding: 8px;">IFSC Code</th>
-              <th style="border: 1px solid #ccc; padding: 8px;">Beneficiary Name</th>
-              <th style="border: 1px solid #ccc; padding: 8px;">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${paymentData.map(d => `
-              <tr>
-                <td style="border: 1px solid #ccc; padding: 8px;">${d.employeeName}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">${d.employeeCode}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">${d.beneficiaryAccountNo}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">${d.ifscCode}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">${d.beneficiaryName}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">₹${d.amount.toLocaleString('en-IN')}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
-    
-    html2pdf().set({
-      margin: 10,
-      filename: `Salary_Payment_${month}_${year}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    }).from(element).save();
-  };
-
-  const downloadExcel = async () => {
-    setShowPrintMenu(false);
-    if (!paymentData.length) return;
-    
-    const headers = [
-      'Employee Name',
-      'Employee Code',
-      'Beneficiary Account No',
-      'IFSC Code',
-      'Beneficiary Name',
-      'Amount',
-      'Remarks for Client',
-      'Remarks for Beneficiary'
-    ];
-
-    const formattedData = paymentData.map(d => [
-      d.employeeName || '',
-      d.employeeCode || '',
-      d.beneficiaryAccountNo || '',
-      d.ifscCode || '',
-      d.beneficiaryName || '',
-      Number(d.amount || 0),
-      d.remarksClient || 'Salary Payment',
-      d.remarksBeneficiary || ''
-    ]);
-
-    await exportTableToExcel({
-      sheetName: 'Salary Payment Sheet',
-      headers,
-      data: formattedData,
-      fileName: `Salary_Payment_${month}_${year}.xlsx`,
-    });
-  };
-
-  const downloadTXT = () => {
-    setShowPrintMenu(false);
-    if (!paymentData.length) return;
-    
-    const txtContent = paymentData.map(d => `${d.beneficiaryAccountNo}|${d.ifscCode}|${d.amount}|${d.employeeName}|${d.remarksBeneficiary}`).join('\n');
-    
-    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Salary_Payment_Bank_Upload_${month}_${year}.txt`;
-    link.click();
-  };
+  );
 
   const totalPayable = paymentData.reduce((sum, item) => sum + item.amount, 0)
   const monthName = new Date(2000, month - 1).toLocaleString('default', { month: 'long' })
 
+  // ==========================================
+  // VIEW MODE: SAVED SALARY BANK PAYMENT SHEETS LIST
+  // ==========================================
+  if (viewMode === "list") {
+    return (
+      <div className="flex-1 space-y-6 pb-8">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b pb-6">
+          <div>
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setViewMode("sheet")}
+                className="h-8 px-2 text-muted-foreground hover:text-foreground cursor-pointer"
+              >
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Back to Sheet
+              </Button>
+              <h2 className="text-3xl font-bold tracking-tight">Saved Salary Bank Payment Sheets</h2>
+            </div>
+            <p className="text-muted-foreground mt-1 ml-1 text-sm">
+              View and download all generated salary bank payment sheets stored in the <span className="font-mono text-zinc-700 font-medium">SalaryBankPaymentSheet</span> table.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button 
+              onClick={() => setIsGenerateModalOpen(true)}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center gap-2 font-medium cursor-pointer"
+            >
+              <Plus className="h-4 w-4" />
+              Generate Bank Payment Sheet
+            </Button>
+          </div>
+        </div>
+
+        {/* Top Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <Card className="bg-card shadow-sm border-zinc-200">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Total Sheets</p>
+                <p className="text-2xl font-bold text-zinc-900 mt-1">{savedBankSheets.length}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Saved in database</p>
+              </div>
+              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">
+                <FileSpreadsheet className="h-6 w-6" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card shadow-sm border-zinc-200">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Total Net Payable</p>
+                <p className="text-2xl font-bold text-primary mt-1">
+                  {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(totalSavedAmount)}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">Across all saved batches</p>
+              </div>
+              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">
+                <DollarSign className="h-6 w-6" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card shadow-sm border-zinc-200">
+            <CardContent className="p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Total Beneficiaries</p>
+                <p className="text-2xl font-bold text-zinc-900 mt-1">{totalSavedBeneficiaries}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Total payout records</p>
+              </div>
+              <div className="p-3 bg-blue-50 text-blue-600 rounded-lg border border-blue-100">
+                <Users className="h-6 w-6" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Saved Sheets Table */}
+        <div className="border rounded-lg bg-background shadow-sm overflow-hidden">
+          {isSavedLoading ? (
+            <div className="p-8 text-center text-muted-foreground">Loading saved salary bank payment sheets...</div>
+          ) : savedBankSheets.length === 0 ? (
+            <div className="p-12 text-center text-muted-foreground flex flex-col items-center justify-center">
+              <FileSpreadsheet className="h-12 w-12 text-zinc-300 mb-3" />
+              <h3 className="text-lg font-semibold text-zinc-700">No Saved Salary Bank Payment Sheets Found</h3>
+              <p className="text-sm text-zinc-500 mt-1 max-w-md">
+                When you click "Generate Bank Payment Sheet", the salary payment data is automatically saved into the <span className="font-semibold text-zinc-700">SalaryBankPaymentSheet</span> database table and listed here for instant downloading.
+              </p>
+              <Button 
+                onClick={() => setIsGenerateModalOpen(true)}
+                className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 cursor-pointer"
+              >
+                <Plus className="h-4 w-4" />
+                Generate Bank Payment Sheet Now
+              </Button>
+            </div>
+          ) : (
+            <div className="[&_td]:py-3 [&_th]:py-3.5 [&_tr]:border-b [&_table]:w-full overflow-x-auto">
+              <DataTable 
+                columns={savedBankSheetColumns} 
+                data={savedBankSheets} 
+                searchPlaceholder="Search by Excel name, month, or batch ID..." 
+                hideToolbarOptions 
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Generate Salary Bank Payment Sheet Date Selection Modal */}
+        <Modal
+          isOpen={isGenerateModalOpen}
+          onClose={() => setIsGenerateModalOpen(false)}
+          title="Generate Bank Payment Sheet"
+          description="Select the date range or month to generate and save the bank payment sheet."
+          size="md"
+        >
+          <div className="space-y-5 pt-2">
+            {/* Selection Mode Tabs */}
+            <div className="grid grid-cols-2 gap-1 bg-muted/60 p-1 rounded-lg border text-xs font-medium">
+              <button
+                type="button"
+                onClick={() => setDateSelectionType("range")}
+                className={`py-2 rounded-md transition-all cursor-pointer text-center ${
+                  dateSelectionType === "range"
+                    ? "bg-background text-foreground font-semibold shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Date Range
+              </button>
+              <button
+                type="button"
+                onClick={() => setDateSelectionType("month")}
+                className={`py-2 rounded-md transition-all cursor-pointer text-center ${
+                  dateSelectionType === "month"
+                    ? "bg-background text-foreground font-semibold shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Month & Year
+              </button>
+            </div>
+
+            {/* Inputs based on selection */}
+            {dateSelectionType === "range" && (
+              <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-zinc-50 border border-zinc-200/80">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-zinc-700 flex items-center gap-1">
+                    <Calendar className="h-3.5 w-3.5 text-zinc-400" />
+                    From Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={modalFromDate}
+                    onChange={(e) => setModalFromDate(e.target.value)}
+                    className="bg-white text-xs h-9"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-zinc-700 flex items-center gap-1">
+                    <Calendar className="h-3.5 w-3.5 text-zinc-400" />
+                    To Date
+                  </label>
+                  <Input
+                    type="date"
+                    value={modalToDate}
+                    onChange={(e) => setModalToDate(e.target.value)}
+                    className="bg-white text-xs h-9"
+                  />
+                </div>
+              </div>
+            )}
+
+            {dateSelectionType === "month" && (
+              <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-zinc-50 border border-zinc-200/80">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-zinc-700">Month</label>
+                  <select
+                    value={modalMonth}
+                    onChange={(e) => setModalMonth(Number(e.target.value))}
+                    className="flex h-9 w-full rounded-md border border-input bg-white px-3 py-1.5 text-xs text-zinc-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                      <option key={m} value={m}>
+                        {new Date(2000, m - 1).toLocaleString("default", { month: "long" })}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-zinc-700">Year</label>
+                  <select
+                    value={modalYear}
+                    onChange={(e) => setModalYear(Number(e.target.value))}
+                    className="flex h-9 w-full rounded-md border border-input bg-white px-3 py-1.5 text-xs text-zinc-800 shadow-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  >
+                    {[currentDate.getFullYear() - 1, currentDate.getFullYear(), currentDate.getFullYear() + 1].map((y) => (
+                      <option key={y} value={y}>
+                        {y}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* Information Card */}
+            <div className="p-3 bg-emerald-50/70 rounded-lg border border-emerald-200 flex items-start gap-2.5">
+              <Sparkles className="h-4 w-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-emerald-900 leading-relaxed">
+                Clicking <strong>Generate & Save Sheet</strong> will download the Excel bank converter file and save all row data into the <strong>SalaryBankPaymentSheet</strong> table in database.
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-end gap-2.5 pt-2 border-t">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setIsGenerateModalOpen(false)}
+                className="cursor-pointer text-xs"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleGenerateBankPaymentSheet}
+                disabled={isModalSubmitting}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium flex items-center gap-1.5 cursor-pointer text-xs"
+              >
+                {isModalSubmitting ? (
+                  <>
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <span>Processing...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Generate & Save Sheet</span>
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      </div>
+    );
+  }
+
+  // ==========================================
+  // VIEW MODE: LIVE SALARY PAYMENT SHEET VIEW
+  // ==========================================
   return (
     <div className="flex-1 space-y-6 pb-8">
       {/* Header */}
@@ -235,27 +861,63 @@ export default function SalaryPaymentSheet() {
         <div>
           <div className="flex items-center gap-3">
             <h2 className="text-3xl font-bold tracking-tight">Salary Payment Sheet</h2>
-            <div className="flex gap-2">
-              {isApproved ? (
-                <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1 px-3 py-1">
-                  <CheckCircle2 className="h-3.5 w-3.5" /> CEO Approved (Final Sign-off)
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 flex items-center gap-1 px-3 py-1">
-                  <ShieldAlert className="h-3.5 w-3.5" /> Pending Final Approval
-                </Badge>
-              )}
-            </div>
+            {isApproved && (
+              <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1 px-3 py-1">
+                <CheckCircle2 className="h-3 w-3" /> CEO Approved (Final Sign-off)
+              </Badge>
+            )}
           </div>
           <p className="text-muted-foreground mt-1">
-            Batch #PS-{year}-{String(month).padStart(2, '0')}-01 • Prepared for bank upload
+            Batch #PS-{fileSuffix} • Prepared for bank upload
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+          {/* View Bank Payment Sheet Button */}
+          <Button
+            variant="outline"
+            onClick={() => {
+              fetchSavedBankSheets();
+              setViewMode("list");
+            }}
+            className="h-10 text-xs font-semibold bg-emerald-50/70 hover:bg-emerald-100 text-emerald-800 border-emerald-300 gap-1.5 cursor-pointer shadow-xs"
+          >
+            <Layers className="h-4 w-4 text-emerald-600" />
+            View Bank Payment Sheet
+            {savedBankSheets.length > 0 && (
+              <Badge className="ml-1 h-5 px-1.5 text-[10px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-full">
+                {savedBankSheets.length}
+              </Badge>
+            )}
+          </Button>
+
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">From:</span>
+            <Input 
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="w-[135px] text-xs h-10 bg-background border-input"
+            />
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground whitespace-nowrap">To:</span>
+            <Input 
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="w-[135px] text-xs h-10 bg-background border-input"
+            />
+          </div>
+          {(fromDate || toDate) && (
+            <Button variant="ghost" size="sm" onClick={() => { setFromDate(''); setToDate(''); }} className="text-xs h-10 px-2 cursor-pointer">
+              Clear Dates
+            </Button>
+          )}
+          {/* Month and Year Selectors */}
           <select 
             value={month} 
-            onChange={(e) => setMonth(Number(e.target.value))}
-            className="flex h-10 w-[140px] items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            onChange={(e) => { setMonth(Number(e.target.value)); setFromDate(''); setToDate(''); }}
+            className="flex h-10 w-[120px] items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {Array.from({ length: 12 }, (_, i) => i + 1).map(m => (
               <option key={m} value={m}>{new Date(2000, m - 1).toLocaleString('default', { month: 'long' })}</option>
@@ -263,8 +925,8 @@ export default function SalaryPaymentSheet() {
           </select>
           <select 
             value={year} 
-            onChange={(e) => setYear(Number(e.target.value))}
-            className="flex h-10 w-[100px] items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            onChange={(e) => { setYear(Number(e.target.value)); setFromDate(''); setToDate(''); }}
+            className="flex h-10 w-[85px] items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {[currentDate.getFullYear() - 1, currentDate.getFullYear(), currentDate.getFullYear() + 1].map(y => (
               <option key={y} value={y}>{y}</option>
@@ -272,13 +934,13 @@ export default function SalaryPaymentSheet() {
           </select>
 
           <div className="relative ml-2">
-            <Button variant="outline" onClick={togglePrintMenu} disabled={!isApproved}>
+            <Button variant="outline" onClick={togglePrintMenu}>
               <Printer className="mr-2 h-4 w-4" />
               Print Sheet
               <ChevronDown className="ml-2 h-4 w-4 text-muted-foreground" />
             </Button>
             {showPrintMenu && (
-              <div className="absolute right-0 top-full mt-1 w-48 rounded-md border bg-popover text-popover-foreground shadow-md z-50">
+              <div className="absolute right-0 top-full mt-1 w-56 rounded-md border bg-popover text-popover-foreground shadow-md z-50">
                 <div className="p-1 flex flex-col">
                   <button className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground text-left" onClick={downloadPDF}>
                     Download as PDF
@@ -297,17 +959,17 @@ export default function SalaryPaymentSheet() {
       </div>
 
       {/* Control Bar */}
-      <Card className="bg-card">
+      <Card className="hidden bg-card">
         <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-end justify-between">
           <div className="flex flex-col md:flex-row gap-4 w-full md:w-auto">
             <div className="w-full md:w-64">
               <div className="relative">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input className="pl-8 h-9" placeholder="Search name or code..." disabled={!isApproved} />
+                <Input className="pl-8 h-9" placeholder="Search name or code..." />
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-4 bg-muted/50 p-3 rounded-lg border">
+          <div className="hidden items-center gap-4 bg-muted/50 p-3 rounded-lg border">
             <div>
               <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Total Net Payable</p>
               <p className="text-xl font-bold text-primary">{new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(totalPayable)}</p>
@@ -316,33 +978,36 @@ export default function SalaryPaymentSheet() {
           </div>
         </CardContent>
       </Card>
+      
+      {/* Dynamic Summary Card */}
+      <div className="flex justify-end mb-4">
+          <Card className="inline-flex overflow-hidden">
+            <CardContent className="p-4 bg-emerald-50/50 flex items-center gap-4">
+               <div>
+                  <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider">Total Net Payable</p>
+                  <p className="text-2xl font-bold text-primary">{new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(totalPayable)}</p>
+               </div>
+               <div className="h-12 w-12 rounded-full bg-emerald-100 flex items-center justify-center">
+                 <FileSpreadsheet className="h-6 w-6 text-emerald-600" />
+               </div>
+            </CardContent>
+          </Card>
+      </div>
 
-      {!isApproved && !isLoading && (
-        <div className="p-6 rounded-xl border border-amber-200 bg-amber-50/50 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-start gap-3">
-            <Info className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
-            <div>
-              <h4 className="font-semibold text-amber-900">No Approved Salary Payment Sheet for {monthName} {year}</h4>
-              <p className="text-sm text-amber-700 mt-1">
-                Salary payment sheets submitted from HRMS require executive approval before they can be processed and downloaded here.
-              </p>
+      {/* No Approved Data Notice */}
+      {!isLoading && !isApproved && (
+        <Card className="border-amber-200 bg-amber-50/60 mb-4">
+          <CardContent className="p-4 flex items-center gap-3">
+            <ShieldAlert className="h-5 w-5 text-amber-600 flex-shrink-0" />
+            <div className="text-xs text-amber-800">
+              <span className="font-semibold">No CEO Approved Salary Sheet Found for {monthName} {year}.</span> Salary data will appear here once the payment sheet has been approved by the CEO in <strong>Final Approvals</strong>.
             </div>
-          </div>
-          <Link to="/approvals/payment-sheet-final" className="shrink-0">
-            <Button size="sm" variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100">
-              Check Final Approvals
-              <ArrowUpRight className="ml-1.5 h-4 w-4" />
-            </Button>
-          </Link>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      <div className="border rounded-lg bg-background shadow-sm overflow-hidden relative min-h-[200px]">
-        {isLoading && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/50 backdrop-blur-sm">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        )}
+      <div className="border rounded-lg bg-background shadow-sm overflow-hidden">
+        {/* We use the shared DataTable component, but wrapper styling makes it feel more dense/Excel-like */}
         <div className="[&_td]:py-2 [&_th]:py-3 [&_tr]:border-b [&_table]:w-full overflow-x-auto">
           <DataTable columns={columns} data={paymentData} searchPlaceholder="Search name or code..." hideToolbarOptions />
         </div>

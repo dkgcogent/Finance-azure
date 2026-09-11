@@ -14,7 +14,20 @@ import {
   Save,
   Download,
   Loader2,
-  Plus
+  Plus,
+  Calendar,
+  Building2,
+  Briefcase,
+  MapPin,
+  X,
+  RotateCcw,
+  SlidersHorizontal,
+  Pencil,
+  Check,
+  Trash2,
+  Lock,
+  Unlock,
+  Edit3
 } from "lucide-react"
 import { apiClient } from "@/lib/api"
 import { exportTableToExcel } from "@/lib/excelExportHelper"
@@ -95,6 +108,7 @@ const initialDetailedData = [
 ];
 
 const columnsConfig = [
+  { key: 'action', label: 'Action', bg: 'bg-[#f1f5f9]', initialWidth: 90, isSticky: true },
   { key: 'gst', label: 'From GST', bg: 'bg-[#e6b8b7]', initialWidth: 100, isSticky: true },
   { key: 'generationType', label: 'Generated', bg: 'bg-[#e6b8b7]', initialWidth: 110, isSticky: true },
   { key: 'gstNo', label: 'From GST No.', bg: 'bg-[#e6b8b7]', initialWidth: 150, isSticky: true },
@@ -157,6 +171,38 @@ export default function GlobalInvoiceMaster() {
   const [filterType, setFilterType] = useState<"All" | "Customer" | "Vendor">("All")
   const [masterRows, setMasterRows] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [editingRowIds, setEditingRowIds] = useState<Set<string | number>>(new Set())
+
+  const toggleRowEdit = (rowId: string | number) => {
+    setEditingRowIds(prev => {
+      const next = new Set(prev);
+      if (next.has(rowId)) {
+        next.delete(rowId);
+      } else {
+        next.add(rowId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAllEdit = () => {
+    if (editingRowIds.size === filteredMasterRows.length && filteredMasterRows.length > 0) {
+      setEditingRowIds(new Set());
+    } else {
+      setEditingRowIds(new Set(filteredMasterRows.map(r => r.id)));
+    }
+  };
+
+  const handleDeleteManualRow = (rowId: string | number) => {
+    if (window.confirm("Are you sure you want to remove this manual row?")) {
+      setMasterRows(prev => prev.filter(r => r.id !== rowId));
+      setEditingRowIds(prev => {
+        const next = new Set(prev);
+        next.delete(rowId);
+        return next;
+      });
+    }
+  };
   
   const fetchMaster = async () => {
     setLoading(true);
@@ -189,8 +235,9 @@ export default function GlobalInvoiceMaster() {
 
   const handleAddRow = () => {
     const today = new Date().toISOString().split('T')[0];
+    const newId = `manual_${Date.now()}`;
     const newRow = {
-      id: `manual_${Date.now()}`,
+      id: newId,
       isStandalone: true,
       type: "Customer",
       gst: "DL",
@@ -252,22 +299,179 @@ export default function GlobalInvoiceMaster() {
     };
 
     setMasterRows(prev => [newRow, ...prev]);
+    setEditingRowIds(prev => new Set(prev).add(newId));
   };
 
+  // Filter states
+  const [searchTerm, setSearchTerm] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [selectedMonth, setSelectedMonth] = useState("All");
+  const [selectedCustomer, setSelectedCustomer] = useState("All");
+  const [selectedProject, setSelectedProject] = useState("All");
+  const [selectedLocation, setSelectedLocation] = useState("All");
+
+  // Dynamic filter options derived from masterRows
+  const customerOptions = useMemo(() => {
+    const set = new Set<string>();
+    masterRows.forEach(r => {
+      const val = String(r.custName || '').trim();
+      if (val) set.add(val);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [masterRows]);
+
+  const projectOptions = useMemo(() => {
+    const set = new Set<string>();
+    masterRows.forEach(r => {
+      if (selectedCustomer !== "All" && String(r.custName || '').trim().toLowerCase() !== selectedCustomer.trim().toLowerCase()) {
+        return;
+      }
+      const val = String(r.proj || '').trim();
+      if (val) set.add(val);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [masterRows, selectedCustomer]);
+
+  const locationOptions = useMemo(() => {
+    const set = new Set<string>();
+    masterRows.forEach(r => {
+      const val = String(r.loc || '').trim();
+      if (val) set.add(val);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [masterRows]);
+
+  const monthOptions = useMemo(() => {
+    const set = new Set<string>();
+    masterRows.forEach(r => {
+      if (r.invMonth && String(r.invMonth).trim()) {
+        set.add(String(r.invMonth).trim());
+      } else if (r.svcMonth && String(r.svcMonth).trim()) {
+        set.add(String(r.svcMonth).trim());
+      } else {
+        const d = parseDateHelper(r.invDate);
+        if (d) {
+          const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          const yy = String(d.getFullYear()).slice(-2);
+          set.add(`${monthNames[d.getMonth()]}-${yy}`);
+        }
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [masterRows]);
+
+  const hasActiveFilters = useMemo(() => {
+    return (
+      searchTerm.trim() !== "" ||
+      startDate !== "" ||
+      endDate !== "" ||
+      selectedMonth !== "All" ||
+      selectedCustomer !== "All" ||
+      selectedProject !== "All" ||
+      selectedLocation !== "All"
+    );
+  }, [searchTerm, startDate, endDate, selectedMonth, selectedCustomer, selectedProject, selectedLocation]);
+
+  const resetFilters = () => {
+    setSearchTerm("");
+    setStartDate("");
+    setEndDate("");
+    setSelectedMonth("All");
+    setSelectedCustomer("All");
+    setSelectedProject("All");
+    setSelectedLocation("All");
+  };
+
+  // Master rows filtered by all criteria
+  const filteredMasterRows = useMemo(() => {
+    return masterRows.filter(row => {
+      // 1. Search query
+      if (searchTerm.trim()) {
+        const term = searchTerm.trim().toLowerCase();
+        const searchableFields = [
+          row.invNo, row.poNo, row.custName, row.proj, row.loc,
+          row.gstNo, row.custGst, row.projWork, row.revHead, row.invTo,
+          row.jmsNum, row.invMonth, row.svcMonth, row.payStatus
+        ];
+        const match = searchableFields.some(f => f && String(f).toLowerCase().includes(term));
+        if (!match) return false;
+      }
+
+      // 2. Customer
+      if (selectedCustomer !== "All") {
+        if (String(row.custName || '').trim().toLowerCase() !== selectedCustomer.trim().toLowerCase()) {
+          return false;
+        }
+      }
+
+      // 3. Project
+      if (selectedProject !== "All") {
+        if (String(row.proj || '').trim().toLowerCase() !== selectedProject.trim().toLowerCase()) {
+          return false;
+        }
+      }
+
+      // 4. Location
+      if (selectedLocation !== "All") {
+        if (String(row.loc || '').trim().toLowerCase() !== selectedLocation.trim().toLowerCase()) {
+          return false;
+        }
+      }
+
+      // 5. Month
+      if (selectedMonth !== "All") {
+        const rowMonth = String(row.invMonth || row.svcMonth || '').trim().toLowerCase();
+        const d = parseDateHelper(row.invDate);
+        let derivedMonth = '';
+        if (d) {
+          const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+          const yy = String(d.getFullYear()).slice(-2);
+          derivedMonth = `${monthNames[d.getMonth()]}-${yy}`.toLowerCase();
+        }
+        const targetMonth = selectedMonth.trim().toLowerCase();
+        const monthMatch = rowMonth.includes(targetMonth) || targetMonth.includes(rowMonth) || derivedMonth === targetMonth;
+        if (!monthMatch) return false;
+      }
+
+      // 6. Date Range
+      if (startDate || endDate) {
+        const d = parseDateHelper(row.invDate) || parseDateHelper(row.subDate);
+        if (d) {
+          const rowTime = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+          if (startDate) {
+            const startD = new Date(startDate);
+            const startTime = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate()).getTime();
+            if (rowTime < startTime) return false;
+          }
+          if (endDate) {
+            const endD = new Date(endDate);
+            const endTime = new Date(endD.getFullYear(), endD.getMonth(), endD.getDate()).getTime();
+            if (rowTime > endTime) return false;
+          }
+        } else if (startDate || endDate) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [masterRows, searchTerm, selectedCustomer, selectedProject, selectedLocation, selectedMonth, startDate, endDate]);
+
   const handleExport = async () => {
-    if (!masterRows || masterRows.length === 0) {
+    const dataToExport = filteredMasterRows.length > 0 ? filteredMasterRows : masterRows;
+    if (!dataToExport || dataToExport.length === 0) {
       alert("No data to export");
       return;
     }
     
     const headers = columnsConfig.map(c => c.label.replace(/\n/g, ' '));
     
-    const formattedData = masterRows.map(row => {
+    const formattedData = dataToExport.map(row => {
       return columnsConfig.map(c => {
         const raw = row[c.key];
         if (raw === null || raw === undefined) return '';
         const strVal = String(raw).trim();
-        // If it's a numeric amount string with commas like "10,82,657.10"
         const isNumeric = /^-?[\d,]+(\.\d+)?$/.test(strVal) && !c.key.toLowerCase().includes('gst') && !c.key.toLowerCase().includes('date') && !c.key.toLowerCase().includes('no') && !c.key.toLowerCase().includes('hsn');
         if (isNumeric) {
           const num = parseFloat(strVal.replace(/,/g, ''));
@@ -373,11 +577,183 @@ export default function GlobalInvoiceMaster() {
 
 
       <Card>
-        <CardHeader className="pb-4 border-b">
+        <CardHeader className="pb-3 border-b space-y-3">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <CardTitle>Master Tracking Ledger</CardTitle>
               <CardDescription>Consolidated view of all payables and receivables.</CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
+              {editingRowIds.size > 0 && (
+                <Badge className="px-2.5 py-0.5 text-xs font-medium bg-blue-600 hover:bg-blue-600 text-white shadow-sm flex items-center gap-1.5 animate-in fade-in zoom-in-95 duration-200">
+                  <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block" />
+                  <span>{editingRowIds.size} Row{editingRowIds.size > 1 ? 's' : ''} in Edit Mode</span>
+                </Badge>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs gap-1.5 shadow-none border-slate-300 hover:border-blue-400 hover:bg-blue-50 transition-all duration-200 active:scale-95"
+                onClick={toggleAllEdit}
+              >
+                {editingRowIds.size === filteredMasterRows.length && filteredMasterRows.length > 0 ? (
+                  <>
+                    <Lock className="w-3.5 h-3.5 text-slate-600 transition-transform duration-200" />
+                    Lock All
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="w-3.5 h-3.5 text-blue-600 transition-transform duration-200" />
+                    Edit All
+                  </>
+                )}
+              </Button>
+              <Badge variant="secondary" className="px-2.5 py-1 text-xs font-medium bg-slate-100 text-slate-700">
+                Showing {filteredMasterRows.length} of {masterRows.length} Invoices
+              </Badge>
+              {hasActiveFilters && (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50 gap-1 px-2 font-medium transition-colors"
+                  onClick={resetFilters}
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Reset Filters
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Filter Toolbar */}
+          <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5 items-end text-xs shadow-sm">
+            {/* 1. Global Search */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                <Search className="w-3 h-3 text-slate-500" />
+                Search
+              </label>
+              <div className="relative">
+                <Input
+                  type="text"
+                  placeholder="Invoice, PO, Name..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="h-8 text-xs bg-white pr-7 border-slate-300"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm("")}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* 2. Date Range: From Date */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-slate-500" />
+                From Date
+              </label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="h-8 text-xs bg-white border-slate-300"
+              />
+            </div>
+
+            {/* 3. Date Range: To Date */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-slate-500" />
+                To Date
+              </label>
+              <Input
+                type="date"
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+                className="h-8 text-xs bg-white border-slate-300"
+              />
+            </div>
+
+            {/* 4. Month Wise */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-slate-500" />
+                Month
+              </label>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className="w-full h-8 px-2.5 rounded-md border border-slate-300 bg-white text-xs text-slate-800 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
+              >
+                <option value="All">All Months</option>
+                {monthOptions.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 5. Customer */}
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                <Building2 className="w-3 h-3 text-slate-500" />
+                Customer
+              </label>
+              <select
+                value={selectedCustomer}
+                onChange={(e) => {
+                  setSelectedCustomer(e.target.value);
+                  setSelectedProject("All"); // Reset project when customer changes
+                }}
+                className="w-full h-8 px-2.5 rounded-md border border-slate-300 bg-white text-xs text-slate-800 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
+              >
+                <option value="All">All Customers</option>
+                {customerOptions.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* 6. Project & Location */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                  <Briefcase className="w-3 h-3 text-slate-500" />
+                  Project
+                </label>
+                <select
+                  value={selectedProject}
+                  onChange={(e) => setSelectedProject(e.target.value)}
+                  className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs text-slate-800 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
+                >
+                  <option value="All">All Projects</option>
+                  {projectOptions.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] font-semibold text-slate-700 flex items-center gap-1">
+                  <MapPin className="w-3 h-3 text-slate-500" />
+                  Location
+                </label>
+                <select
+                  value={selectedLocation}
+                  onChange={(e) => setSelectedLocation(e.target.value)}
+                  className="w-full h-8 px-2 rounded-md border border-slate-300 bg-white text-xs text-slate-800 shadow-sm focus:outline-none focus:ring-1 focus:ring-blue-500 truncate"
+                >
+                  <option value="All">All Locations</option>
+                  {locationOptions.map((l) => (
+                    <option key={l} value={l}>{l}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
         </CardHeader>
@@ -385,6 +761,18 @@ export default function GlobalInvoiceMaster() {
           {loading ? (
             <div className="flex justify-center items-center h-64">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          ) : filteredMasterRows.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-slate-500 bg-white">
+              <Filter className="h-10 w-10 text-slate-300 mb-2" />
+              <p className="font-semibold text-sm text-slate-700">No matching invoices found</p>
+              <p className="text-xs text-slate-400 mt-1">Try adjusting your date range, month, customer, project, or location filter.</p>
+              {hasActiveFilters && (
+                <Button variant="outline" size="sm" className="mt-4 text-xs gap-1.5" onClick={resetFilters}>
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  Clear All Filters
+                </Button>
+              )}
             </div>
           ) : (
             <div className="rounded-b-md overflow-x-auto bg-white" style={{ maxWidth: '100%', maxHeight: '65vh' }}>
@@ -418,18 +806,89 @@ export default function GlobalInvoiceMaster() {
                     </tr>
                   </thead>
                   <tbody>
-                    {masterRows.map((row, i) => {
+                    {filteredMasterRows.map((row, i) => {
                       const isRowStandalone = row.isStandalone || String(row.id).startsWith('manual_');
+                      const isRowEditing = editingRowIds.has(row.id);
 
                       return (
-                        <tr key={row.id || i} className={`hover:bg-slate-50 group ${isRowStandalone ? 'bg-amber-50/30' : ''}`}>
+                        <tr 
+                          key={row.id || i} 
+                          className={`group transition-colors duration-150 ${
+                            isRowEditing 
+                              ? 'bg-blue-50 ring-1 ring-blue-300 relative z-10' 
+                              : isRowStandalone 
+                                ? 'bg-amber-50/40 hover:bg-amber-50' 
+                                : 'bg-white hover:bg-slate-50'
+                          }`}
+                        >
                           {columnsConfig.map((col) => {
                              const width = getColWidth(col.key, col.initialWidth);
                              const isSticky = !!col.isSticky;
                              const leftOffset = isSticky ? `${stickyOffsets[col.key] ?? 0}px` : undefined;
 
-                             const isCalculatedCol = ['totPay', 'outstanding', 'generationType', 'payDays', 'payDelay'].includes(col.key);
-                             const isEditable = col.key === 'generationType' ? false : (isRowStandalone ? !isCalculatedCol : (col.bg !== 'bg-[#e6b8b7]' && !isCalculatedCol));
+                             // Action Column
+                             if (col.key === 'action') {
+                               return (
+                                 <td 
+                                   key={col.key} 
+                                   className={`p-1 border border-slate-300 text-center transition-colors duration-150 ${isSticky ? 'sticky z-10 bg-white group-hover:bg-slate-50' : 'bg-white'} ${isRowEditing ? '!bg-blue-50' : ''}`}
+                                   style={{
+                                     width: `${width}px`, 
+                                     minWidth: `${width}px`, 
+                                     maxWidth: `${width}px`,
+                                     left: leftOffset 
+                                   }}
+                                 >
+                                   <div className="flex items-center justify-center gap-1">
+                                     {isRowEditing ? (
+                                       <Button 
+                                         size="sm" 
+                                         variant="default" 
+                                         className="h-6 px-2.5 text-[11px] bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white gap-1 font-medium shadow-sm transition-all duration-150 ring-2 ring-emerald-400/30"
+                                         onClick={() => toggleRowEdit(row.id)}
+                                         title="Done editing (lock row)"
+                                       >
+                                         <Check className="w-3 h-3" />
+                                         Done
+                                       </Button>
+                                     ) : (
+                                       <Button 
+                                         size="sm" 
+                                         variant="outline" 
+                                         className="h-6 px-2.5 text-[11px] border-slate-300 hover:border-blue-400 hover:bg-blue-50 text-blue-600 hover:text-blue-700 active:scale-95 gap-1 font-medium shadow-none transition-all duration-150 hover:shadow-sm"
+                                         onClick={() => toggleRowEdit(row.id)}
+                                         title="Edit row"
+                                       >
+                                         <Pencil className="w-3 h-3" />
+                                         Edit
+                                       </Button>
+                                     )}
+                                     {isRowStandalone && (
+                                       <button
+                                         onClick={() => handleDeleteManualRow(row.id)}
+                                         className="p-1 hover:bg-red-50 text-slate-400 hover:text-red-600 rounded transition-all duration-150 active:scale-90"
+                                         title="Delete manual row"
+                                       >
+                                         <Trash2 className="w-3.5 h-3.5" />
+                                       </button>
+                                     )}
+                                   </div>
+                                 </td>
+                               );
+                             }
+
+                             const isCalculatedCol = ['totPay', 'outstanding', 'generationType', 'payDays', 'payDelay', 'action'].includes(col.key);
+                             
+                             let isEditable = false;
+                             if (isRowEditing) {
+                               if (isRowStandalone) {
+                                 // Manual entry: both grey and red head columns can be edited
+                                 isEditable = !isCalculatedCol && col.key !== 'generationType';
+                               } else {
+                                 // System generated: ONLY grey head columns can be edited
+                                 isEditable = !isCalculatedCol && col.bg === 'bg-[#d9d9d9]';
+                               }
+                             }
 
                              const rawVal = row[col.key];
                              const isNumericCol = [
@@ -452,32 +911,49 @@ export default function GlobalInvoiceMaster() {
                                return (
                                  <td 
                                    key={col.key} 
-                                   className={`p-2 border border-slate-300 outline-none text-center ${col.cellClasses || ''} ${isSticky ? 'sticky z-10 bg-white group-hover:bg-slate-50' : ''} cursor-default bg-slate-50/50`}
+                                   className={`p-2 border border-slate-300 outline-none text-center ${col.cellClasses || ''} ${isSticky ? 'sticky z-10 bg-white group-hover:bg-slate-50' : ''} cursor-default`}
                                    style={{
                                      width: `${width}px`, 
                                      minWidth: `${width}px`, 
-                                     maxWidth: `${width}px`,
+                                     maxWidth: `${width}px`, 
                                      left: leftOffset 
                                    }}
                                  >
-                                   <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold ${isSys ? 'bg-blue-100 text-blue-700 border border-blue-200' : 'bg-amber-100 text-amber-800 border border-amber-200'}`}>
+                                   <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium ${isSys ? 'bg-blue-100 text-blue-800' : 'bg-amber-100 text-amber-800'}`}>
                                      {isSys ? 'System' : 'Manual'}
                                    </span>
                                  </td>
                                );
                              }
 
-                             // Render badge for payDelay (Ontime / Delay)
-                             if (col.key === 'payDelay' && displayVal) {
+                             // Render read-only badge for Payment Ontime / Delay
+                             if (col.key === 'payDelay') {
+                               if (!displayVal) {
+                                 return (
+                                   <td 
+                                     key={col.key} 
+                                     className={`p-2 border border-slate-300 outline-none text-center ${col.cellClasses || ''} ${isSticky ? 'sticky z-10 bg-white group-hover:bg-slate-50' : ''} cursor-default`}
+                                     style={{
+                                       width: `${width}px`, 
+                                       minWidth: `${width}px`, 
+                                       maxWidth: `${width}px`, 
+                                       left: leftOffset 
+                                     }}
+                                   >
+                                     -
+                                   </td>
+                                 );
+                               }
+
                                const isDelay = displayVal === 'Delay';
                                return (
                                  <td 
                                    key={col.key} 
-                                   className={`p-2 border border-slate-300 outline-none text-center ${col.cellClasses || ''} ${isSticky ? 'sticky z-10 bg-white group-hover:bg-slate-50' : ''} cursor-default bg-slate-50/50`}
+                                   className={`p-2 border border-slate-300 outline-none text-center ${col.cellClasses || ''} ${isSticky ? 'sticky z-10 bg-white group-hover:bg-slate-50' : ''} cursor-default`}
                                    style={{
                                      width: `${width}px`, 
                                      minWidth: `${width}px`, 
-                                     maxWidth: `${width}px`,
+                                     maxWidth: `${width}px`, 
                                      left: leftOffset 
                                    }}
                                  >
@@ -491,20 +967,28 @@ export default function GlobalInvoiceMaster() {
                              return (
                               <td 
                                 key={col.key} 
-                                className={`p-2 border border-slate-300 outline-none truncate ${col.cellClasses || ''} ${isSticky ? 'sticky z-10 bg-white group-hover:bg-slate-50' : ''} ${isEditable ? 'focus:bg-blue-50 focus:ring-1 focus:ring-blue-400 cursor-text' : 'cursor-default bg-slate-50/50'}`}
+                                className={`p-2 border border-slate-300 outline-none truncate transition-colors duration-150 ${col.cellClasses || ''} ${isSticky ? 'sticky z-10 bg-white group-hover:bg-slate-50' : ''} ${
+                                  isEditable 
+                                    ? 'bg-amber-50 hover:bg-amber-100 focus:bg-white focus:ring-2 focus:ring-blue-500 focus:shadow-sm cursor-text font-normal text-slate-900 border-dashed border-amber-400' 
+                                    : (isRowEditing ? 'cursor-not-allowed bg-slate-100 text-slate-500 select-none' : 'cursor-default text-slate-800 select-none')
+                                }`}
                                 style={{
                                   width: `${width}px`, 
                                   minWidth: `${width}px`, 
-                                  maxWidth: `${width}px`,
+                                  maxWidth: `${width}px`, 
                                   left: leftOffset 
                                 }}
                                 contentEditable={isEditable}
                                 suppressContentEditableWarning={true}
+                                title={!isEditable && isRowEditing && col.bg === 'bg-[#e6b8b7]' && !isRowStandalone ? 'System invoice billing fields are locked' : (!isRowEditing ? 'Click Edit on row to unlock' : undefined)}
                                 onBlur={(e) => {
                                   if (!isEditable) return;
                                   const textVal = e.currentTarget.textContent || '';
+                                  const originalIdx = masterRows.findIndex(r => (row.id ? r.id === row.id : r === row));
+                                  if (originalIdx === -1) return;
+
                                   const newRows = [...masterRows];
-                                  const updatedRow = { ...newRows[i], [col.key]: textVal };
+                                  const updatedRow = { ...newRows[originalIdx], [col.key]: textVal };
 
                                   const parseNum = (v: any) => {
                                     if (v === null || v === undefined || v === '') return 0;
@@ -569,7 +1053,7 @@ export default function GlobalInvoiceMaster() {
                                   updatedRow.payDays = payDays;
                                   updatedRow.payDelay = getPayDelayStatus(payDays);
 
-                                  newRows[i] = updatedRow;
+                                  newRows[originalIdx] = updatedRow;
                                   setMasterRows(newRows);
                                 }}
                               >

@@ -1188,7 +1188,7 @@ export const invoiceService = {
 
     await ensureGlobalInvoiceManualDataSchema();
 
-    // We fetch customer invoices and join with TMS billing and customer CNDN notes
+    // We fetch customer invoices and join with TMS billing, customer details and customer CNDN notes
     // We also fetch payment collections for these billings.
     const query = `
       SELECT 
@@ -1223,12 +1223,16 @@ export const invoiceService = {
         cndn.grand_total as cn_grand_total,
         cndn.gst_type as cn_gst_type,
 
-        p.ProjectName as linkedProjectName,
-        p.Location as linkedLocation,
         c.GSTNo as customer_table_gst,
+        c.PO as customer_table_po,
+        c.CreditPeriod as customer_table_credit_days,
+        c.TypeOfBilling as customer_table_rcm,
+        c.Name as customer_company_name,
+        c.MasterCustomerName as customer_master_name,
 
+        m.poNo as m_poNo,
         m.jmsStatus as m_jmsStatus, m.jmsNum as m_jmsNum, m.jmsDate as m_jmsDate, m.subDate as m_subDate,
-        m.custName as m_custName, m.proj as m_proj, m.projWork as m_projWork, m.loc as m_loc,
+        m.custName as m_custName, m.proj as m_proj, m.creditDays as m_creditDays, m.projWork as m_projWork, m.loc as m_loc,
         m.revHead as m_revHead, m.hsn as m_hsn, m.invTo as m_invTo, m.rcm as m_rcm,
         m.pay1Amt as m_pay1Amt, m.pay1Date as m_pay1Date, m.pay1Adv as m_pay1Adv,
         m.pay2Amt as m_pay2Amt, m.pay2Date as m_pay2Date, m.pay2Adv as m_pay2Adv,
@@ -1236,10 +1240,34 @@ export const invoiceService = {
         m.gstPayAmt as m_gstPayAmt, m.gstPayDate as m_gstPayDate, m.totPay as m_totPay, m.payStatus as m_payStatus
         
       FROM customer_invoices ci
-      LEFT JOIN customer c ON (ci.customer_name = c.Name OR ci.customer_name = c.MasterCustomerName)
-      LEFT JOIN billing b ON ci.invoice_number = b.InvoiceNo
-      LEFT JOIN project p ON (b.ProjectID = p.ProjectID OR ci.customer_name = p.ProjectName)
-      LEFT JOIN customer_cndn_notes cndn ON (ci.invoice_number = cndn.customer_invoice_ref AND (cndn.status IS NULL OR cndn.status != 'Rejected'))
+      LEFT JOIN (
+        SELECT InvoiceNo, MAX(BillingID) as BillingID, MAX(ProjectID) as ProjectID, MAX(CustomerID) as CustomerID, MAX(PaymentStatus) as PaymentStatus, MAX(GSTRate) as GSTRate
+        FROM billing
+        WHERE InvoiceNo IS NOT NULL AND InvoiceNo != ''
+        GROUP BY InvoiceNo
+      ) b ON ci.invoice_number = b.InvoiceNo
+      LEFT JOIN customer c ON c.CustomerID = COALESCE(
+        b.CustomerID,
+        (SELECT CustomerID FROM customer WHERE Name = ci.customer_name LIMIT 1),
+        (SELECT CustomerID FROM customer WHERE MasterCustomerName = ci.customer_name LIMIT 1),
+        (SELECT CustomerID FROM customer WHERE Name LIKE CONCAT('%', ci.customer_name, '%') LIMIT 1)
+      )
+      LEFT JOIN (
+        SELECT 
+          customer_invoice_ref, 
+          MAX(amount) as amount, 
+          MAX(type) as type, 
+          MAX(note_number) as note_number, 
+          MAX(subtotal) as subtotal, 
+          SUM(COALESCE(igst, 0)) as igst, 
+          SUM(COALESCE(cgst, 0)) as cgst, 
+          SUM(COALESCE(sgst, 0)) as sgst, 
+          SUM(COALESCE(grand_total, 0)) as grand_total, 
+          MAX(gst_type) as gst_type 
+        FROM customer_cndn_notes 
+        WHERE status IS NULL OR status != 'Rejected'
+        GROUP BY customer_invoice_ref
+      ) cndn ON ci.invoice_number = cndn.customer_invoice_ref
       LEFT JOIN global_invoice_manual_data m ON ci.id = m.invoice_id
       ORDER BY ci.created_at DESC
     `;
@@ -1327,6 +1355,11 @@ export const invoiceService = {
       const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
       const invMonth = `${monthNames[dateObj.getMonth()]}-${dateObj.getFullYear().toString().slice(2)}`;
 
+      const resolvedPoNo = (row.m_poNo && String(row.m_poNo).trim() !== '') ? row.m_poNo : (row.customer_table_po || "");
+      const resolvedCustName = (row.m_custName && String(row.m_custName).trim() !== '') ? row.m_custName : (row.customer_master_name || row.custName || row.customer_company_name || "");
+      const resolvedCreditDays = (row.m_creditDays && String(row.m_creditDays).trim() !== '') ? row.m_creditDays : (row.customer_table_credit_days ? String(row.customer_table_credit_days) : "30");
+      const resolvedRcm = (row.m_rcm && String(row.m_rcm).trim() !== '') ? row.m_rcm : (row.customer_table_rcm || "No");
+
       return {
         id: String(row.finance_id),
         type: "Customer",
@@ -1334,7 +1367,7 @@ export const invoiceService = {
         generationType: "System",
         gstNo: "07AAFCC4715N1ZG",
         invNo: row.invNo,
-        poNo: "",
+        poNo: resolvedPoNo,
         invDate: dateObj.toISOString().split('T')[0],
         invMonth: invMonth,
         finYear: row.finYear,
@@ -1343,15 +1376,15 @@ export const invoiceService = {
         jmsNum: row.m_jmsNum || "",
         jmsDate: row.m_jmsDate || "",
         subDate: row.m_subDate || dateObj.toISOString().split('T')[0],
-        custName: (row.m_custName && String(row.m_custName).trim() !== '') ? row.m_custName : (row.custName || ""),
-        proj: (row.m_proj && String(row.m_proj).trim() !== '') ? row.m_proj : (row.ci_project || row.linkedProjectName || ""),
-        creditDays: "30",
-        projWork: (row.m_projWork && String(row.m_projWork).trim() !== '') ? row.m_projWork : (row.ci_project_work || (row.ci_project ? `${row.ci_project} ${row.ci_location || ''}`.trim() : (row.linkedProjectName ? `${row.linkedProjectName} ${row.ci_location || row.linkedLocation || ''}`.trim() : ""))),
-        loc: (row.m_loc && String(row.m_loc).trim() !== '') ? row.m_loc : (row.ci_location || row.linkedLocation || ""),
+        custName: resolvedCustName,
+        proj: (row.m_proj && String(row.m_proj).trim() !== '') ? row.m_proj : (row.ci_project || ""),
+        creditDays: resolvedCreditDays,
+        projWork: (row.m_projWork && String(row.m_projWork).trim() !== '') ? row.m_projWork : (row.ci_project_work || (row.ci_project ? `${row.ci_project} ${row.ci_location || ''}`.trim() : "")),
+        loc: (row.m_loc && String(row.m_loc).trim() !== '') ? row.m_loc : (row.ci_location || ""),
         revHead: (row.m_revHead && String(row.m_revHead).trim() !== '') ? row.m_revHead : "Transportation Of Goods by Road",
         hsn: (row.m_hsn && String(row.m_hsn).trim() !== '') ? row.m_hsn : (row.ci_hsn || "996511"),
-        invTo: row.m_invTo || row.custName || "",
-        rcm: row.m_rcm || "",
+        invTo: row.m_invTo || row.customer_company_name || row.custName || "",
+        rcm: resolvedRcm,
         custGst: custGst,
         
         // Formatted amounts
@@ -1604,11 +1637,12 @@ export const invoiceService = {
         } else {
           const q = `
             INSERT INTO global_invoice_manual_data (
-              invoice_id, jmsStatus, jmsNum, jmsDate, subDate, custName, proj, projWork, loc,
+              invoice_id, poNo, creditDays, jmsStatus, jmsNum, jmsDate, subDate, custName, proj, projWork, loc,
               revHead, hsn, invTo, rcm, pay1Amt, pay1Date, pay1Adv, pay2Amt, pay2Date, pay2Adv,
               pay3Amt, pay3Date, pay3Adv, gstPayAmt, gstPayDate, totPay, payStatus, payDays, payDelay
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE 
+              poNo=VALUES(poNo), creditDays=VALUES(creditDays),
               jmsStatus=VALUES(jmsStatus), jmsNum=VALUES(jmsNum), jmsDate=VALUES(jmsDate), subDate=VALUES(subDate),
               custName=VALUES(custName), proj=VALUES(proj), projWork=VALUES(projWork), loc=VALUES(loc),
               revHead=VALUES(revHead), hsn=VALUES(hsn), invTo=VALUES(invTo), rcm=VALUES(rcm),
@@ -1621,6 +1655,7 @@ export const invoiceService = {
           
           const values = [
             row.id,
+            row.poNo || null, row.creditDays || null,
             row.jmsStatus || null, row.jmsNum || null, row.jmsDate || null, row.subDate || null,
             row.custName || null, row.proj || null, row.projWork || null, row.loc || null,
             row.revHead || null, row.hsn || null, row.invTo || null, row.rcm || null,

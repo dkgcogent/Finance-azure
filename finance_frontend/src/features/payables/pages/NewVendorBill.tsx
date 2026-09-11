@@ -346,13 +346,18 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     }, 0);
 
     const selectedVendorObj = vendors?.find((v: any) => v.id?.toString() === vendorId);
-    const vendorNameStr = 
-      vendorTrips?.vendorInfo?.displayCompanyName || 
-      vendorTrips?.vendorInfo?.CompanyName || 
-      selectedVendorObj?.companyName ||
-      vendorTrips?.vendorInfo?.VendorName || 
-      selectedVendorObj?.name || 
-      'Vendor Company Name';
+    const vInfo = vendorTrips?.vendorInfo;
+    const comp = vInfo?.CompanyName || selectedVendorObj?.companyName || '';
+    const type = vInfo?.TypeOfCompany || selectedVendorObj?.type || '';
+    const resolvedComp = comp ? (type && !comp.toLowerCase().includes(type.toLowerCase()) ? `${comp} ${type}` : comp) : '';
+    const pName = vInfo?.VendorName || selectedVendorObj?.name || '';
+    
+    let vendorNameStr = vInfo?.displayCompanyName || selectedVendorObj?.displayCompanyName || '';
+    if (!vendorNameStr || (!vendorNameStr.includes('(') && resolvedComp && pName && resolvedComp.toLowerCase() !== pName.toLowerCase())) {
+      vendorNameStr = `${resolvedComp} (${pName})`;
+    } else if (!vendorNameStr) {
+      vendorNameStr = resolvedComp || pName || 'Vendor Company Name';
+    }
 
     const vendorAddressStr = 
       vendorTrips?.vendorInfo?.fullAddressWithContact || 
@@ -1002,12 +1007,22 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
               >
                 <div className="bg-yellow-300 text-center py-6 px-4 border-b-[3px] border-black">
                   <h1 className="text-2xl font-bold mb-2">
-                    {vendorTrips?.vendorInfo?.displayCompanyName ||
-                     vendorTrips?.vendorInfo?.CompanyName ||
-                     vendorTrips?.vendorInfo?.VendorName ||
-                     vendors?.find((v: any) => v.id?.toString() === vendorId)?.companyName ||
-                     vendors?.find((v: any) => v.id?.toString() === vendorId)?.name ||
-                     'Vendor Company Name'}
+                    {(() => {
+                      const vInfo = vendorTrips?.vendorInfo;
+                      const selectedVendorObj = vendors?.find((v: any) => v.id?.toString() === vendorId);
+                      const comp = vInfo?.CompanyName || selectedVendorObj?.companyName || '';
+                      const type = vInfo?.TypeOfCompany || selectedVendorObj?.type || '';
+                      const resolvedComp = comp ? (type && !comp.toLowerCase().includes(type.toLowerCase()) ? `${comp} ${type}` : comp) : '';
+                      const pName = vInfo?.VendorName || selectedVendorObj?.name || '';
+                      
+                      let vendorNameStr = vInfo?.displayCompanyName || selectedVendorObj?.displayCompanyName || '';
+                      if (!vendorNameStr || (!vendorNameStr.includes('(') && resolvedComp && pName && resolvedComp.toLowerCase() !== pName.toLowerCase())) {
+                        vendorNameStr = `${resolvedComp} (${pName})`;
+                      } else if (!vendorNameStr) {
+                        vendorNameStr = resolvedComp || pName || 'Vendor Company Name';
+                      }
+                      return vendorNameStr;
+                    })()}
                   </h1>
                   <p className="text-base font-medium">
                     {vendorTrips?.vendorInfo?.fullAddressWithContact ||

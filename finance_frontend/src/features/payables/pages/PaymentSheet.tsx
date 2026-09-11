@@ -27,7 +27,8 @@ import { Input } from "@/components/ui/input"
 import { Modal } from "@/components/ui/modal"
 import { apiClient } from "@/lib/api"
 import html2pdf from "html2pdf.js"
-import { generateImprestBankPaymentExcel } from "../utils/generateImprestPaymentExcel"
+import { generateImprestBankPaymentExcel, generateNormalPaymentExcel } from "../utils/generateImprestPaymentExcel"
+import { exportStructuredPaymentPDF } from "../utils/exportPaymentPDF"
 
 type ImprestRecord = {
   id: string;
@@ -53,15 +54,16 @@ type PaymentEntry = {
   remarksBeneficiary: string
 }
 
-type GeneratedSheetBatch = {
+type SavedBankSheet = {
   batchId: string
-  date: string
-  batchName: string
-  beneficiariesCount: number
+  excelName: string
+  month: string
+  dateFrom: string
+  dateTo: string
+  totalEntries: number
   totalAmount: number
-  status: string
-  entries: PaymentEntry[]
-  categories: string[]
+  createdAt: string
+  updatedAt: string
 }
 
 const getTodayString = () => {
@@ -84,7 +86,9 @@ export default function PaymentSheet() {
   const [showPrintMenu, setShowPrintMenu] = useState(false)
   const [data, setData] = useState<PaymentEntry[]>([])
   const [allRawRecords, setAllRawRecords] = useState<ImprestRecord[]>([])
+  const [savedBankSheets, setSavedBankSheets] = useState<SavedBankSheet[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [isSavedLoading, setIsSavedLoading] = useState(false)
 
   // Generate Payment Sheet Modal State
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
@@ -157,6 +161,19 @@ export default function PaymentSheet() {
     return Array.from(map.values());
   };
 
+  // Fetch saved bank payment sheets from database
+  const fetchSavedBankSheets = async () => {
+    try {
+      setIsSavedLoading(true);
+      const res = await apiClient.get('/imprests/bank-payment-sheets');
+      setSavedBankSheets(res.data || []);
+    } catch (error) {
+      console.error("Failed to fetch saved bank payment sheets:", error);
+    } finally {
+      setIsSavedLoading(false);
+    }
+  };
+
   // Fetch all imprest records (Final Approved / Approved)
   useEffect(() => {
     const fetchImprests = async () => {
@@ -180,85 +197,342 @@ export default function PaymentSheet() {
     };
 
     fetchImprests();
+    fetchSavedBankSheets();
   }, [month, year, selectedDate, fromDate, toDate]);
 
-  // Compute all generated batches grouped by date
-  const generatedBatches = useMemo<GeneratedSheetBatch[]>(() => {
-    if (!allRawRecords.length) return [];
+  const fileSuffix = fromDate && toDate ? `${fromDate}_to_${toDate}` : fromDate ? `from_${fromDate}` : toDate ? `to_${toDate}` : selectedDate ? selectedDate : `${year}-${String(month).padStart(2, '0')}`;
 
-    const batchMap = new Map<string, {
-      date: string,
-      records: ImprestRecord[],
-      categories: Set<string>
-    }>();
+  // Save to database table ImprestBankPaymentSheet & download Excel
+  const saveAndDownloadBankSheet = async (
+    entries: PaymentEntry[],
+    suffix: string,
+    fDate?: string,
+    tDate?: string,
+    mMonth?: number | string,
+    mYear?: number | string
+  ) => {
+    if (!entries.length) return;
 
-    allRawRecords.forEach(record => {
-      const recDate = record.date ? record.date.split('T')[0] : 'Unknown';
-      if (!batchMap.has(recDate)) {
-        batchMap.set(recDate, {
-          date: recDate,
-          records: [],
-          categories: new Set()
-        });
+    const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const derivedMonth = typeof mMonth === 'number' ? `${monthNames[mMonth - 1]} ${mYear || year}` : (mMonth || `${monthNames[month - 1]} ${year}`);
+    const excelName = `Imprest_Payment_Bank_Format_${suffix}.xlsx`;
+
+    const rowsToSave = entries.map(d => ({
+      transactionType: "IFC",
+      debitAccountNo: "163905500140",
+      ifscCode: d.ifscCode || "ICIC0000011",
+      beneficiaryAccountNo: d.beneficiaryAccountNo || "",
+      beneficiaryName: d.beneficiaryName || d.employeeName,
+      amount: d.amount,
+      remarksClient: d.remarksClient || "IMPREST",
+      remarksBeneficiary: d.remarksBeneficiary || "Imprest Payment"
+    }));
+
+    try {
+      await apiClient.post('/imprests/bank-payment-sheets', {
+        excelName,
+        month: derivedMonth,
+        dateFrom: fDate || fromDate || selectedDate || '',
+        dateTo: tDate || toDate || selectedDate || '',
+        rows: rowsToSave
+      });
+      fetchSavedBankSheets();
+    } catch (err) {
+      console.error("Error saving bank payment sheet to database:", err);
+    }
+
+    await generateImprestBankPaymentExcel(rowsToSave, suffix);
+  };
+
+  const downloadPDF = () => {
+    setShowPrintMenu(false);
+    if (!data.length) return;
+
+    exportStructuredPaymentPDF({
+      title: "Imprest Payment Sheet",
+      subTitle: "Operational & Site Imprest Disbursement Summary",
+      periodLabel: `Period: ${fileSuffix}`,
+      batchId: `PS-IMP-${fileSuffix}`,
+      type: "imprest",
+      rows: data.map(d => ({
+        date: d.date,
+        name: d.employeeName,
+        code: d.employeeCode,
+        accountNo: d.beneficiaryAccountNo,
+        ifscCode: d.ifscCode,
+        beneficiaryName: d.beneficiaryName,
+        amount: d.amount,
+        remarks: d.remarksBeneficiary || d.remarksClient
+      })),
+      totalAmount: totalPayable,
+      fileName: `Imprest_Payment_Sheet_${fileSuffix}.pdf`
+    });
+  };
+
+  const downloadExcel = async () => {
+    setShowPrintMenu(false);
+    if (!data.length) return;
+
+    const normalColumns = [
+      { header: "Date", key: "date", width: 15 },
+      { header: "Employee Name", key: "employeeName", width: 25 },
+      { header: "Employee Code", key: "employeeCode", width: 18 },
+      { header: "Beneficiary Account No", key: "beneficiaryAccountNo", width: 24 },
+      { header: "IFSC Code", key: "ifscCode", width: 18 },
+      { header: "Beneficiary Name", key: "beneficiaryName", width: 25 },
+      { header: "Amount (₹)", key: "amount", width: 18 },
+      { header: "Remarks for Client", key: "remarksClient", width: 22 },
+      { header: "Remarks for Beneficiary", key: "remarksBeneficiary", width: 25 }
+    ];
+
+    const fileName = `Imprest_Payment_Sheet_${fileSuffix}.xlsx`;
+    await generateNormalPaymentExcel(normalColumns, data, fileName);
+  };
+
+  const downloadTXT = () => {
+    setShowPrintMenu(false);
+    if (!data.length) return;
+    
+    const txtContent = data.map(d => `${d.date || ''}|${d.beneficiaryAccountNo}|${d.ifscCode}|${d.amount}|${d.employeeName}|${d.remarksBeneficiary}`).join('\n');
+    
+    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Imprest_Payment_Bank_Upload_${fileSuffix}.txt`;
+    link.click();
+  };
+
+  // Download directly from saved database sheet
+  const downloadSavedBatchExcel = async (sheet: SavedBankSheet) => {
+    try {
+      const res = await apiClient.get(`/imprests/bank-payment-sheets/${sheet.batchId}`);
+      const batchRows: any[] = res.data || [];
+      if (batchRows.length === 0) {
+        alert("No records found for this saved sheet");
+        return;
       }
-      const batch = batchMap.get(recDate)!;
-      batch.records.push(record);
-      if (record.head) batch.categories.add(record.head);
-    });
 
-    const result: GeneratedSheetBatch[] = [];
+      const excelPrefix = sheet.excelName.replace(/\.xlsx$/i, '');
+      await generateImprestBankPaymentExcel(
+        batchRows.map(r => ({
+          transactionType: r.transaction_type || "IFC",
+          debitAccountNo: r.debit_account_no || "163905500140",
+          ifscCode: r.ifsc_code || "ICIC0000011",
+          beneficiaryAccountNo: r.beneficiary_account_no || "",
+          beneficiaryName: r.beneficiary_name || "",
+          amount: Number(r.amount) || 0,
+          remarksClient: r.remarks_client || "IMPREST",
+          remarksBeneficiary: r.remarks_beneficiary || "Imprest Payment"
+        })),
+        "",
+        excelPrefix
+      );
+    } catch (err) {
+      console.error("Failed to download saved bank payment sheet:", err);
+      alert("Failed to download saved bank payment sheet");
+    }
+  };
 
-    batchMap.forEach((val, dateKey) => {
-      const entryMap = new Map<string, PaymentEntry>();
-      let totalAmount = 0;
+  // View saved batch details in sheet table
+  const viewSavedBatchDetails = async (sheet: SavedBankSheet) => {
+    try {
+      setIsLoading(true);
+      const res = await apiClient.get(`/imprests/bank-payment-sheets/${sheet.batchId}`);
+      const batchRows: any[] = res.data || [];
+      
+      setData(batchRows.map((r, idx) => ({
+        id: String(r.id || idx),
+        date: r.date_from || r.date_to || (r.created_at ? r.created_at.split('T')[0] : ''),
+        employeeName: r.beneficiary_name || '',
+        employeeCode: `EMP${r.id || idx}`,
+        beneficiaryAccountNo: r.beneficiary_account_no || '',
+        ifscCode: r.ifsc_code || '',
+        beneficiaryName: r.beneficiary_name || '',
+        amount: Number(r.amount) || 0,
+        remarksClient: r.remarks_client || 'IMPREST',
+        remarksBeneficiary: r.remarks_beneficiary || ''
+      })));
 
-      val.records.forEach(record => {
-        const userId = String(record.user_id);
-        const amt = Number(record.pass_amount) || Number(record.amount) || 0;
-        totalAmount += amt;
+      setFromDate(sheet.dateFrom || '');
+      setToDate(sheet.dateTo || '');
+      setSelectedDate('');
+      setViewMode('sheet');
+    } catch (err) {
+      console.error("Failed to load saved batch details", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-        if (!entryMap.has(userId)) {
-          entryMap.set(userId, {
-            id: `${dateKey}_${userId}`,
-            date: dateKey,
-            employeeName: `Employee ${userId}`,
-            employeeCode: `EMP${userId}`,
-            beneficiaryAccountNo: `000100000${userId.padStart(3, '0')}`,
-            ifscCode: 'ICIC0000011',
-            beneficiaryName: `Employee ${userId}`,
-            amount: 0,
-            remarksClient: "IMPREST",
-            remarksBeneficiary: record.head || "Daily Requisition"
-          });
-        }
-        const entry = entryMap.get(userId)!;
-        entry.amount += amt;
-      });
+  // Handle Date Selection Modal Proceed: Triggers automatic database storage and Excel download
+  const handleProceedWithDateSelection = async () => {
+    let targetFrom = '';
+    let targetTo = '';
+    let targetSingle = '';
+    let targetMonth = month;
+    let targetYear = year;
+    let targetSuffix = '';
 
-      const entries = Array.from(entryMap.values());
+    if (dateSelectionType === "single") {
+      targetSingle = modalSingleDate;
+      targetSuffix = modalSingleDate;
+      setSelectedDate(modalSingleDate);
+      setFromDate('');
+      setToDate('');
+    } else if (dateSelectionType === "range") {
+      targetFrom = modalFromDate;
+      targetTo = modalToDate;
+      targetSuffix = `${modalFromDate}_to_${modalToDate}`;
+      setFromDate(modalFromDate);
+      setToDate(modalToDate);
+      setSelectedDate('');
+    } else if (dateSelectionType === "month") {
+      targetMonth = modalMonth;
+      targetYear = modalYear;
+      targetSuffix = `${modalYear}-${String(modalMonth).padStart(2, '0')}`;
+      setMonth(modalMonth);
+      setYear(modalYear);
+      setFromDate('');
+      setToDate('');
+      setSelectedDate('');
+    }
 
-      result.push({
-        batchId: `PS-${dateKey}`,
-        date: dateKey,
-        batchName: `Imprest Payment Batch - ${dateKey}`,
-        beneficiariesCount: entries.length,
-        totalAmount,
-        status: "Final Approved",
-        entries,
-        categories: Array.from(val.categories)
-      });
-    });
+    // Compile entries for the selected timeframe
+    const targetEntries = compileEntries(
+      allRawRecords,
+      targetFrom,
+      targetTo,
+      targetSingle,
+      targetMonth,
+      targetYear
+    );
 
-    return result.sort((a, b) => b.date.localeCompare(a.date));
-  }, [allRawRecords]);
+    // Save to Database & Download Excel in bank format
+    await saveAndDownloadBankSheet(
+      targetEntries,
+      targetSuffix,
+      targetFrom || targetSingle,
+      targetTo || targetSingle,
+      targetMonth,
+      targetYear
+    );
 
-  const totalGeneratedAmount = useMemo(() => {
-    return generatedBatches.reduce((sum, b) => sum + b.totalAmount, 0);
-  }, [generatedBatches]);
+    // Update active data and open sheet view
+    setData(targetEntries);
+    setIsGenerateModalOpen(false);
+    setViewMode("sheet");
+  };
 
-  const totalBeneficiaries = useMemo(() => {
-    return generatedBatches.reduce((sum, b) => sum + b.beneficiariesCount, 0);
-  }, [generatedBatches]);
+  // Columns for the Saved Bank Payment Sheets List Table
+  const savedBankSheetColumns = useMemo<ColumnDef<SavedBankSheet>[]>(
+    () => [
+      {
+        accessorKey: "excelName",
+        header: ({ column }) => <SortableHeader column={column} title="Bank Payment Sheet Excel name" />,
+        cell: ({ row }) => (
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-emerald-50 text-emerald-700 rounded border border-emerald-200">
+              <FileSpreadsheet className="h-4 w-4" />
+            </div>
+            <div>
+              <span className="font-semibold text-zinc-900 text-xs block">{row.getValue("excelName")}</span>
+              <span className="text-[11px] text-muted-foreground font-mono">{row.original.batchId}</span>
+            </div>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "month",
+        header: ({ column }) => <SortableHeader column={column} title="Month" />,
+        cell: ({ row }) => (
+          <div className="font-medium text-xs text-zinc-700">
+            {row.getValue("month") || "-"}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "dateFrom",
+        header: ({ column }) => <SortableHeader column={column} title="Date to (From)" />,
+        cell: ({ row }) => (
+          <div className="whitespace-nowrap font-medium text-xs text-zinc-700 flex items-center gap-1">
+            <Calendar className="h-3.5 w-3.5 text-zinc-400" />
+            {row.getValue("dateFrom") || "-"}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "dateTo",
+        header: ({ column }) => <SortableHeader column={column} title="Date End (To)" />,
+        cell: ({ row }) => (
+          <div className="whitespace-nowrap font-medium text-xs text-zinc-700 flex items-center gap-1">
+            <Calendar className="h-3.5 w-3.5 text-zinc-400" />
+            {row.getValue("dateTo") || "-"}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "totalEntries",
+        header: ({ column }) => <SortableHeader column={column} title="Beneficiaries" />,
+        cell: ({ row }) => (
+          <div className="whitespace-nowrap text-xs font-medium text-zinc-700 flex items-center gap-1.5">
+            <Users className="h-3.5 w-3.5 text-zinc-400" />
+            <span>{row.getValue("totalEntries")} Records</span>
+          </div>
+        ),
+      },
+      {
+        accessorKey: "totalAmount",
+        header: ({ column }) => <SortableHeader column={column} title="Total Amount" />,
+        cell: ({ row }) => (
+          <div className="font-bold text-primary text-xs whitespace-nowrap">
+            {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(Number(row.getValue("totalAmount")) || 0)}
+          </div>
+        ),
+      },
+      {
+        accessorKey: "createdAt",
+        header: ({ column }) => <SortableHeader column={column} title="Generated On" />,
+        cell: ({ row }) => {
+          const d = row.getValue("createdAt") ? new Date(row.getValue("createdAt") as string) : null;
+          return (
+            <div className="text-xs text-muted-foreground whitespace-nowrap">
+              {d ? d.toLocaleString('en-IN', { dateStyle: 'short', timeStyle: 'short' }) : '-'}
+            </div>
+          );
+        },
+      },
+      {
+        id: "actions",
+        header: () => <div className="text-right">Download</div>,
+        cell: ({ row }) => {
+          const sheet = row.original;
+          return (
+            <div className="flex items-center justify-end">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={() => downloadSavedBatchExcel(sheet)}
+                title="Download Bank Payment Sheet Excel"
+                className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 text-white gap-1 px-2.5 cursor-pointer shadow-xs"
+              >
+                <Download className="h-3.5 w-3.5" />
+                Download Excel
+              </Button>
+            </div>
+          );
+        },
+      },
+    ],
+    []
+  );
+
+  const totalSavedAmount = useMemo(() => {
+    return savedBankSheets.reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  }, [savedBankSheets]);
+
+  const totalSavedBeneficiaries = useMemo(() => {
+    return savedBankSheets.reduce((sum, b) => sum + Number(b.totalEntries || 0), 0);
+  }, [savedBankSheets]);
 
   const columns = useMemo<ColumnDef<PaymentEntry>[]>(
     () => [
@@ -302,8 +576,12 @@ export default function PaymentSheet() {
       },
       {
         accessorKey: "amount",
-        header: ({ column }) => <SortableHeader column={column} title="Amount (₹)" />,
-        cell: ({ row }) => <div className="text-right font-bold text-primary">{new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(row.getValue("amount"))}</div>,
+        header: ({ column }) => (
+          <div className="flex justify-center">
+            <SortableHeader column={column} title="Amount (₹)" className="ml-0" />
+          </div>
+        ),
+        cell: ({ row }) => <div className="text-center font-bold text-primary">{new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(row.getValue("amount"))}</div>,
       },
       {
         accessorKey: "remarksClient",
@@ -325,283 +603,10 @@ export default function PaymentSheet() {
     []
   )
 
-  const fileSuffix = fromDate && toDate ? `${fromDate}_to_${toDate}` : fromDate ? `from_${fromDate}` : toDate ? `to_${toDate}` : selectedDate ? selectedDate : `${year}-${String(month).padStart(2, '0')}`;
-
-  const downloadPDF = () => {
-    setShowPrintMenu(false);
-    if (!data.length) return;
-    
-    const element = document.createElement('div');
-    element.innerHTML = `
-      <div style="padding: 20px; font-family: sans-serif;">
-        <h2 style="text-align: center;">Imprest Payment Sheet - ${fileSuffix}</h2>
-        <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
-          <thead>
-            <tr>
-              <th style="border: 1px solid #ccc; padding: 8px;">Date</th>
-              <th style="border: 1px solid #ccc; padding: 8px;">Emp Name</th>
-              <th style="border: 1px solid #ccc; padding: 8px;">Account No</th>
-              <th style="border: 1px solid #ccc; padding: 8px;">IFSC Code</th>
-              <th style="border: 1px solid #ccc; padding: 8px;">Beneficiary Name</th>
-              <th style="border: 1px solid #ccc; padding: 8px;">Amount</th>
-              <th style="border: 1px solid #ccc; padding: 8px;">Remarks</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${data.map(d => `
-              <tr>
-                <td style="border: 1px solid #ccc; padding: 8px;">${d.date || ''}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">${d.employeeName}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">${d.beneficiaryAccountNo}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">${d.ifscCode}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">${d.beneficiaryName}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">₹${d.amount}</td>
-                <td style="border: 1px solid #ccc; padding: 8px;">${d.remarksBeneficiary}</td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
-    
-    html2pdf().set({
-      margin: 10,
-      filename: `Imprest_Payment_${fileSuffix}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    }).from(element).save();
-  };
-
-  const downloadExcel = async () => {
-    setShowPrintMenu(false);
-    if (!data.length) return;
-    
-    await generateImprestBankPaymentExcel(
-      data.map(d => ({
-        transactionType: "IFC",
-        debitAccountNo: "163905500140",
-        ifscCode: d.ifscCode || "ICIC0000011",
-        beneficiaryAccountNo: d.beneficiaryAccountNo || "",
-        beneficiaryName: d.beneficiaryName || d.employeeName,
-        amount: d.amount,
-        remarksClient: d.remarksClient || "IMPREST",
-        remarksBeneficiary: d.remarksBeneficiary || "Imprest Payment"
-      })),
-      fileSuffix
-    );
-  };
-
-  const downloadTXT = () => {
-    setShowPrintMenu(false);
-    if (!data.length) return;
-    
-    const txtContent = data.map(d => `${d.date || ''}|${d.beneficiaryAccountNo}|${d.ifscCode}|${d.amount}|${d.employeeName}|${d.remarksBeneficiary}`).join('\n');
-    
-    const blob = new Blob([txtContent], { type: 'text/plain;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `Imprest_Payment_Bank_Upload_${fileSuffix}.txt`;
-    link.click();
-  };
-
-  const downloadBatchExcel = async (batch: GeneratedSheetBatch) => {
-    await generateImprestBankPaymentExcel(
-      batch.entries.map(d => ({
-        transactionType: "IFC",
-        debitAccountNo: "163905500140",
-        ifscCode: d.ifscCode || "ICIC0000011",
-        beneficiaryAccountNo: d.beneficiaryAccountNo || "",
-        beneficiaryName: d.beneficiaryName || d.employeeName,
-        amount: d.amount,
-        remarksClient: d.remarksClient || "IMPREST",
-        remarksBeneficiary: d.remarksBeneficiary || "Imprest Payment"
-      })),
-      batch.batchId
-    );
-  };
-
-  const openBatchInSheetView = (batchDate: string) => {
-    setSelectedDate(batchDate);
-    setFromDate('');
-    setToDate('');
-    setViewMode('sheet');
-  };
-
-  // Handle Date Selection Modal Proceed: Triggers automatic Excel download and opens sheet
-  const handleProceedWithDateSelection = async () => {
-    let targetFrom = '';
-    let targetTo = '';
-    let targetSingle = '';
-    let targetMonth = month;
-    let targetYear = year;
-    let targetSuffix = '';
-
-    if (dateSelectionType === "single") {
-      targetSingle = modalSingleDate;
-      targetSuffix = modalSingleDate;
-      setSelectedDate(modalSingleDate);
-      setFromDate('');
-      setToDate('');
-    } else if (dateSelectionType === "range") {
-      targetFrom = modalFromDate;
-      targetTo = modalToDate;
-      targetSuffix = `${modalFromDate}_to_${modalToDate}`;
-      setFromDate(modalFromDate);
-      setToDate(modalToDate);
-      setSelectedDate('');
-    } else if (dateSelectionType === "month") {
-      targetMonth = modalMonth;
-      targetYear = modalYear;
-      targetSuffix = `${modalYear}-${String(modalMonth).padStart(2, '0')}`;
-      setMonth(modalMonth);
-      setYear(modalYear);
-      setFromDate('');
-      setToDate('');
-      setSelectedDate('');
-    }
-
-    // Compile entries for the selected timeframe
-    const targetEntries = compileEntries(
-      allRawRecords,
-      targetFrom,
-      targetTo,
-      targetSingle,
-      targetMonth,
-      targetYear
-    );
-
-    // Download Excel in bank format using ExcelJS
-    await generateImprestBankPaymentExcel(
-      targetEntries.map(d => ({
-        transactionType: "IFC",
-        debitAccountNo: "163905500140",
-        ifscCode: d.ifscCode || "ICIC0000011",
-        beneficiaryAccountNo: d.beneficiaryAccountNo || "",
-        beneficiaryName: d.beneficiaryName || d.employeeName,
-        amount: d.amount,
-        remarksClient: d.remarksClient || "IMPREST",
-        remarksBeneficiary: d.remarksBeneficiary || "Imprest Payment"
-      })),
-      targetSuffix
-    );
-
-    // Update active data and open sheet view
-    setData(targetEntries);
-    setIsGenerateModalOpen(false);
-    setViewMode("sheet");
-  };
-
-  // Columns for the Generated Payment Sheets List Table
-  const batchColumns = useMemo<ColumnDef<GeneratedSheetBatch>[]>(
-    () => [
-      {
-        accessorKey: "batchId",
-        header: ({ column }) => <SortableHeader column={column} title="Batch ID" />,
-        cell: ({ row }) => (
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-purple-50 text-purple-700 rounded border border-purple-200">
-              <FileSpreadsheet className="h-4 w-4" />
-            </div>
-            <div>
-              <span className="font-semibold text-zinc-900 text-sm block">{row.getValue("batchId")}</span>
-              <span className="text-xs text-muted-foreground">{row.original.batchName}</span>
-            </div>
-          </div>
-        ),
-      },
-      {
-        accessorKey: "date",
-        header: ({ column }) => <SortableHeader column={column} title="Sheet Date" />,
-        cell: ({ row }) => (
-          <div className="whitespace-nowrap font-medium text-xs text-zinc-700 flex items-center gap-1.5">
-            <Calendar className="h-3.5 w-3.5 text-zinc-400" />
-            {row.getValue("date")}
-          </div>
-        ),
-      },
-      {
-        accessorKey: "categories",
-        header: ({ column }) => <SortableHeader column={column} title="Expense Heads" />,
-        cell: ({ row }) => (
-          <div className="flex flex-wrap gap-1 max-w-[220px]">
-            {row.original.categories.length > 0 ? (
-              row.original.categories.map((cat, i) => (
-                <Badge key={i} variant="outline" className="text-[10px] px-1.5 py-0 bg-zinc-50 text-zinc-600 border-zinc-200">
-                  {cat}
-                </Badge>
-              ))
-            ) : (
-              <span className="text-xs text-muted-foreground">General Imprest</span>
-            )}
-          </div>
-        ),
-      },
-      {
-        accessorKey: "beneficiariesCount",
-        header: ({ column }) => <SortableHeader column={column} title="Beneficiaries" />,
-        cell: ({ row }) => (
-          <div className="whitespace-nowrap text-xs font-medium text-zinc-700 flex items-center gap-1.5">
-            <Users className="h-3.5 w-3.5 text-zinc-400" />
-            <span>{row.getValue("beneficiariesCount")} Employees</span>
-          </div>
-        ),
-      },
-      {
-        accessorKey: "totalAmount",
-        header: ({ column }) => <SortableHeader column={column} title="Total Net Payable" />,
-        cell: ({ row }) => (
-          <div className="text-right font-bold text-primary text-sm whitespace-nowrap">
-            {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(row.getValue("totalAmount"))}
-          </div>
-        ),
-      },
-      {
-        accessorKey: "status",
-        header: ({ column }) => <SortableHeader column={column} title="Approval Status" />,
-        cell: ({ row }) => (
-          <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 flex items-center gap-1 px-2.5 py-0.5 text-xs whitespace-nowrap w-fit">
-            <CheckCircle2 className="h-3 w-3" /> Ready for Payout
-          </Badge>
-        ),
-      },
-      {
-        id: "actions",
-        header: () => <div className="text-right">Actions</div>,
-        cell: ({ row }) => {
-          const batch = row.original;
-          return (
-            <div className="flex items-center justify-end gap-1.5">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => openBatchInSheetView(batch.date)}
-                className="h-8 text-xs font-medium bg-primary/5 hover:bg-primary/10 text-primary border-primary/20 gap-1.5 cursor-pointer"
-              >
-                <Eye className="h-3.5 w-3.5" />
-                View Sheet
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => downloadBatchExcel(batch)}
-                title="Download Excel (Bank Format)"
-                className="h-8 w-8 p-0 text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 cursor-pointer"
-              >
-                <Download className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          );
-        },
-      },
-    ],
-    []
-  );
-
   const totalPayable = data.reduce((sum, item) => sum + item.amount, 0)
 
   // ==========================================
-  // VIEW MODE: GENERATED PAYMENT SHEETS LIST
+  // VIEW MODE: SAVED BANK PAYMENT SHEETS LIST
   // ==========================================
   if (viewMode === "list") {
     return (
@@ -619,34 +624,34 @@ export default function PaymentSheet() {
                 <ArrowLeft className="h-4 w-4 mr-1" />
                 Back to Sheet
               </Button>
-              <h2 className="text-3xl font-bold tracking-tight">Generated Imprest Payment Sheets</h2>
+              <h2 className="text-3xl font-bold tracking-tight">Saved Bank Payment Sheets</h2>
             </div>
-            <p className="text-muted-foreground mt-1 ml-1">
-              List of all generated & finalized imprest payment sheets prepared for bank upload.
+            <p className="text-muted-foreground mt-1 ml-1 text-sm">
+              View and download all generated & stored bank payment sheets in Excel format from <span className="font-mono text-zinc-700 font-medium">ImprestBankPaymentSheet</span> table.
             </p>
           </div>
           <div className="flex items-center gap-2">
             <Button 
               onClick={() => setIsGenerateModalOpen(true)}
-              className="bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm flex items-center gap-2 font-medium cursor-pointer"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm flex items-center gap-2 font-medium cursor-pointer"
             >
               <Plus className="h-4 w-4" />
-              Generate Payment Sheet
+              Generate Bank Payment Sheet
             </Button>
           </div>
         </div>
 
         {/* Top Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="bg-card shadow-sm border-zinc-200">
             <CardContent className="p-4 flex items-center justify-between">
               <div>
                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Total Sheets</p>
-                <p className="text-2xl font-bold text-zinc-900 mt-1">{generatedBatches.length}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Generated batches</p>
+                <p className="text-2xl font-bold text-zinc-900 mt-1">{savedBankSheets.length}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Saved in database</p>
               </div>
-              <div className="p-3 bg-purple-50 text-purple-600 rounded-lg border border-purple-100">
-                <Layers className="h-6 w-6" />
+              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">
+                <FileSpreadsheet className="h-6 w-6" />
               </div>
             </CardContent>
           </Card>
@@ -656,9 +661,9 @@ export default function PaymentSheet() {
               <div>
                 <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Total Net Payable</p>
                 <p className="text-2xl font-bold text-primary mt-1">
-                  {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(totalGeneratedAmount)}
+                  {new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(totalSavedAmount)}
                 </p>
-                <p className="text-xs text-muted-foreground mt-0.5">Across all sheets</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Across all saved batches</p>
               </div>
               <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">
                 <DollarSign className="h-6 w-6" />
@@ -669,57 +674,42 @@ export default function PaymentSheet() {
           <Card className="bg-card shadow-sm border-zinc-200">
             <CardContent className="p-4 flex items-center justify-between">
               <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Beneficiaries</p>
-                <p className="text-2xl font-bold text-zinc-900 mt-1">{totalBeneficiaries}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Total payout entries</p>
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Total Beneficiaries</p>
+                <p className="text-2xl font-bold text-zinc-900 mt-1">{totalSavedBeneficiaries}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Total payout records</p>
               </div>
               <div className="p-3 bg-blue-50 text-blue-600 rounded-lg border border-blue-100">
                 <Users className="h-6 w-6" />
               </div>
             </CardContent>
           </Card>
-
-          <Card className="bg-card shadow-sm border-zinc-200">
-            <CardContent className="p-4 flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">Payout Status</p>
-                <p className="text-sm font-semibold text-emerald-600 mt-1 flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4" /> 100% CEO Approved
-                </p>
-                <p className="text-xs text-muted-foreground mt-0.5">Ready for ICICI/Bank upload</p>
-              </div>
-              <div className="p-3 bg-emerald-50 text-emerald-600 rounded-lg border border-emerald-100">
-                <FileSpreadsheet className="h-6 w-6" />
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
-        {/* Generated Sheets Table */}
+        {/* Saved Sheets Table */}
         <div className="border rounded-lg bg-background shadow-sm overflow-hidden">
-          {isLoading ? (
-            <div className="p-8 text-center text-muted-foreground">Loading payment sheets...</div>
-          ) : generatedBatches.length === 0 ? (
+          {isSavedLoading ? (
+            <div className="p-8 text-center text-muted-foreground">Loading saved bank payment sheets...</div>
+          ) : savedBankSheets.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground flex flex-col items-center justify-center">
               <FileSpreadsheet className="h-12 w-12 text-zinc-300 mb-3" />
-              <h3 className="text-lg font-semibold text-zinc-700">No Generated Payment Sheets Found</h3>
+              <h3 className="text-lg font-semibold text-zinc-700">No Saved Bank Payment Sheets Found</h3>
               <p className="text-sm text-zinc-500 mt-1 max-w-md">
-                Click "Generate Payment Sheet" above to select a date range or specific period to generate a payment sheet.
+                When you click "Generate Bank Payment Sheet", the data will be simultaneously stored into the <span className="font-semibold text-zinc-700">ImprestBankPaymentSheet</span> database table and listed here for instant downloading.
               </p>
               <Button 
                 onClick={() => setIsGenerateModalOpen(true)}
-                className="mt-4 bg-primary text-primary-foreground flex items-center gap-2 cursor-pointer"
+                className="mt-4 bg-emerald-600 hover:bg-emerald-700 text-white flex items-center gap-2 cursor-pointer"
               >
                 <Plus className="h-4 w-4" />
-                Generate Payment Sheet Now
+                Generate Bank Payment Sheet Now
               </Button>
             </div>
           ) : (
             <div className="[&_td]:py-3 [&_th]:py-3.5 [&_tr]:border-b [&_table]:w-full overflow-x-auto">
               <DataTable 
-                columns={batchColumns} 
-                data={generatedBatches} 
-                searchPlaceholder="Search by Batch ID, date, or category..." 
+                columns={savedBankSheetColumns} 
+                data={savedBankSheets} 
+                searchPlaceholder="Search by Excel name, month, or batch ID..." 
                 hideToolbarOptions 
               />
             </div>
@@ -730,13 +720,13 @@ export default function PaymentSheet() {
         <Modal
           isOpen={isGenerateModalOpen}
           onClose={() => setIsGenerateModalOpen(false)}
-          title="Generate Imprest Payment Sheet"
-          description="Select the date or period to generate the bank payment sheet."
+          title="Generate Bank Payment Sheet"
+          description="Select the date range or month to generate and save the bank payment sheet."
           size="md"
         >
           <div className="space-y-5 pt-2">
             {/* Selection Mode Tabs */}
-            <div className="grid grid-cols-3 gap-1 bg-muted/60 p-1 rounded-lg border text-xs font-medium">
+            <div className="grid grid-cols-2 gap-1 bg-muted/60 p-1 rounded-lg border text-xs font-medium">
               <button
                 type="button"
                 onClick={() => setDateSelectionType("range")}
@@ -747,17 +737,6 @@ export default function PaymentSheet() {
                 }`}
               >
                 Date Range
-              </button>
-              <button
-                type="button"
-                onClick={() => setDateSelectionType("single")}
-                className={`py-2 rounded-md transition-all cursor-pointer text-center ${
-                  dateSelectionType === "single"
-                    ? "bg-background text-foreground font-semibold shadow-sm"
-                    : "text-muted-foreground hover:text-foreground"
-                }`}
-              >
-                Single Date
               </button>
               <button
                 type="button"
@@ -802,21 +781,6 @@ export default function PaymentSheet() {
               </div>
             )}
 
-            {dateSelectionType === "single" && (
-              <div className="p-4 rounded-lg bg-zinc-50 border border-zinc-200/80 space-y-1.5">
-                <label className="text-xs font-medium text-zinc-700 flex items-center gap-1">
-                  <Calendar className="h-3.5 w-3.5 text-zinc-400" />
-                  Select Date
-                </label>
-                <Input
-                  type="date"
-                  value={modalSingleDate}
-                  onChange={(e) => setModalSingleDate(e.target.value)}
-                  className="bg-white text-xs h-9"
-                />
-              </div>
-            )}
-
             {dateSelectionType === "month" && (
               <div className="grid grid-cols-2 gap-4 p-4 rounded-lg bg-zinc-50 border border-zinc-200/80">
                 <div className="space-y-1.5">
@@ -851,10 +815,10 @@ export default function PaymentSheet() {
             )}
 
             {/* Information Card */}
-            <div className="p-3 bg-purple-50/60 rounded-lg border border-purple-100 flex items-start gap-2.5">
-              <Sparkles className="h-4 w-4 text-purple-600 mt-0.5 flex-shrink-0" />
-              <p className="text-xs text-purple-900 leading-relaxed">
-                Clicking <strong>Proceed to Sheet</strong> will download the Excel bank converter file and open the payment sheet details.
+            <div className="p-3 bg-emerald-50/70 rounded-lg border border-emerald-200 flex items-start gap-2.5">
+              <Sparkles className="h-4 w-4 text-emerald-600 mt-0.5 flex-shrink-0" />
+              <p className="text-xs text-emerald-900 leading-relaxed">
+                Clicking <strong>Generate & Save Sheet</strong> will download the Excel bank converter file and save all row data into the <strong>ImprestBankPaymentSheet</strong> table in database.
               </p>
             </div>
 
@@ -871,9 +835,9 @@ export default function PaymentSheet() {
               <Button
                 size="sm"
                 onClick={handleProceedWithDateSelection}
-                className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium flex items-center gap-1.5 cursor-pointer text-xs"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium flex items-center gap-1.5 cursor-pointer text-xs"
               >
-                <span>Proceed to Sheet</span>
+                <span>Generate & Save Sheet</span>
                 <ArrowRight className="h-3.5 w-3.5" />
               </Button>
             </div>
@@ -969,7 +933,7 @@ export default function PaymentSheet() {
                     Download as PDF
                   </button>
                   <button className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground text-left" onClick={downloadExcel}>
-                    Download as Excel (Bank Format)
+                    Download as Excel
                   </button>
                   <button className="relative flex w-full cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground text-left" onClick={downloadTXT}>
                     Download as TXT (For Bank)
@@ -984,19 +948,19 @@ export default function PaymentSheet() {
       {/* Control Bar */}
       <Card className="bg-card">
         <CardContent className="p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
-          {/* Payment Sheet Button on the left side inside the Card */}
+          {/* View Bank Payment Sheet Button on the left side inside the Card (Circled in UI) */}
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
             <Button 
               variant="outline" 
               onClick={() => setViewMode("list")}
-              className="bg-purple-50/70 hover:bg-purple-100/80 text-purple-700 border-purple-200 font-semibold flex items-center gap-2.5 h-11 px-4 shadow-sm hover:border-purple-300 transition-all cursor-pointer"
+              className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border-emerald-300 font-semibold flex items-center gap-2.5 h-10 px-4 shadow-sm hover:border-emerald-400 transition-all cursor-pointer"
             >
-              <div className="p-1 bg-purple-100 text-purple-700 rounded">
+              <div className="p-1 bg-emerald-100 text-emerald-700 rounded">
                 <FileSpreadsheet className="h-4 w-4" />
               </div>
-              <span className="text-sm">Payment Sheets</span>
-              <Badge variant="secondary" className="ml-1 bg-purple-200/80 text-purple-800 text-xs font-bold px-2 py-0.5 rounded-full">
-                {generatedBatches.length}
+              <span className="text-sm">View Bank Payment Sheet</span>
+              <Badge variant="secondary" className="ml-1 bg-emerald-200 text-emerald-900 text-xs font-bold px-2 py-0.5 rounded-full">
+                {savedBankSheets.length}
               </Badge>
             </Button>
 

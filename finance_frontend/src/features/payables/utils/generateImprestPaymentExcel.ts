@@ -13,7 +13,8 @@ export interface ImprestBankPaymentRow {
 
 export async function generateImprestBankPaymentExcel(
   data: ImprestBankPaymentRow[],
-  fileSuffix: string
+  fileSuffix: string,
+  fileNamePrefix: string = "Imprest_Payment_Bank_Format"
 ) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "Finance System";
@@ -93,7 +94,7 @@ export async function generateImprestBankPaymentExcel(
     const cell = headerRow.getCell(colNum);
     cell.value = hText;
     cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-    cell.borders = BORDER_ALL;
+    cell.border = BORDER_ALL;
 
     if (colNum === 10) {
       cell.fill = RED_HEADER_FILL;
@@ -142,7 +143,7 @@ export async function generateImprestBankPaymentExcel(
     cellA.alignment = { vertical: "middle", horizontal: "center" };
     cellA.fill = YELLOW_ROW_FILL;
     cellA.font = { name: "Arial", size: 10 };
-    cellA.borders = BORDER_ALL;
+    cellA.border = BORDER_ALL;
 
     // Col B: Debit Account no
     const cellB = row.getCell(2);
@@ -150,7 +151,7 @@ export async function generateImprestBankPaymentExcel(
     cellB.alignment = { vertical: "middle", horizontal: "center" };
     cellB.fill = YELLOW_ROW_FILL;
     cellB.font = { name: "Arial", size: 10 };
-    cellB.borders = BORDER_ALL;
+    cellB.border = BORDER_ALL;
 
     // Col C: IFSC
     const cellC = row.getCell(3);
@@ -158,7 +159,7 @@ export async function generateImprestBankPaymentExcel(
     cellC.alignment = { vertical: "middle", horizontal: "center" };
     cellC.fill = YELLOW_ROW_FILL;
     cellC.font = { name: "Arial", size: 10 };
-    cellC.borders = BORDER_ALL;
+    cellC.border = BORDER_ALL;
 
     // Col D: Beneficiary Account No
     const cellD = row.getCell(4);
@@ -166,7 +167,7 @@ export async function generateImprestBankPaymentExcel(
     cellD.alignment = { vertical: "middle", horizontal: "left" };
     cellD.fill = YELLOW_ROW_FILL;
     cellD.font = { name: "Arial", size: 10 };
-    cellD.borders = BORDER_ALL;
+    cellD.border = BORDER_ALL;
 
     // Col E: Beneficiary Name
     const cellE = row.getCell(5);
@@ -174,7 +175,7 @@ export async function generateImprestBankPaymentExcel(
     cellE.alignment = { vertical: "middle", horizontal: "left" };
     cellE.fill = YELLOW_ROW_FILL;
     cellE.font = { name: "Arial", size: 10 };
-    cellE.borders = BORDER_ALL;
+    cellE.border = BORDER_ALL;
 
     // Col F: Amount
     const cellF = row.getCell(6);
@@ -183,7 +184,7 @@ export async function generateImprestBankPaymentExcel(
     cellF.alignment = { vertical: "middle", horizontal: "right" };
     cellF.fill = YELLOW_ROW_FILL;
     cellF.font = { name: "Arial", size: 10, bold: true };
-    cellF.borders = BORDER_ALL;
+    cellF.border = BORDER_ALL;
 
     // Col G: Remarks for Client
     const cellG = row.getCell(7);
@@ -191,7 +192,7 @@ export async function generateImprestBankPaymentExcel(
     cellG.alignment = { vertical: "middle", horizontal: "left" };
     cellG.fill = YELLOW_ROW_FILL;
     cellG.font = { name: "Arial", size: 10 };
-    cellG.borders = BORDER_ALL;
+    cellG.border = BORDER_ALL;
 
     // Col H: Remarks for Beneficiary
     const cellH = row.getCell(8);
@@ -199,12 +200,12 @@ export async function generateImprestBankPaymentExcel(
     cellH.alignment = { vertical: "middle", horizontal: "left" };
     cellH.fill = YELLOW_ROW_FILL;
     cellH.font = { name: "Arial", size: 10 };
-    cellH.borders = BORDER_ALL;
+    cellH.border = BORDER_ALL;
 
     // Col I: Spacer
     const cellI = row.getCell(9);
     cellI.value = "";
-    cellI.borders = {
+    cellI.border = {
       right: { style: "medium", color: { argb: "FFC00000" } }
     };
 
@@ -221,10 +222,11 @@ export async function generateImprestBankPaymentExcel(
     cellJ.alignment = { vertical: "middle", horizontal: "left" };
     cellJ.fill = OUTPUT_ROW_FILL;
     cellJ.font = { name: "Consolas", size: 9.5, color: { argb: "FF1E293B" } };
-    cellJ.borders = BORDER_ALL;
+    cellJ.border = BORDER_ALL;
   });
 
   // Write and trigger download
+  const safeSuffix = (fileSuffix || "all").replace(/[\/\\?%*:|"<>]/g, "-");
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -233,9 +235,105 @@ export async function generateImprestBankPaymentExcel(
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `Imprest_Payment_Bank_Format_${fileSuffix}.xlsx`;
+  link.download = `${fileNamePrefix}_${safeSuffix}.xlsx`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   window.URL.revokeObjectURL(url);
 }
+
+export interface NormalExcelColumn {
+  header: string;
+  key: string;
+  width?: number;
+}
+
+export async function generateNormalPaymentExcel(
+  columns: NormalExcelColumn[],
+  rows: Record<string, any>[],
+  fileName: string
+) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Finance System";
+  wb.created = new Date();
+
+  const ws = wb.addWorksheet("Payment Sheet", {
+    views: [{ showGridLines: true }]
+  });
+
+  const THIN_BORDER: ExcelJS.Border = { style: "thin", color: { argb: "FFD4D4D8" } };
+  const BORDER_ALL: Partial<ExcelJS.Borders> = {
+    top: THIN_BORDER,
+    bottom: THIN_BORDER,
+    left: THIN_BORDER,
+    right: THIN_BORDER
+  };
+
+  const HEADER_FILL: ExcelJS.Fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF1E293B" } // Slate 800
+  };
+
+  ws.columns = columns.map(c => ({
+    key: c.key,
+    width: c.width || 20
+  }));
+
+  // Header Row
+  const headerRow = ws.getRow(1);
+  headerRow.height = 28;
+
+  columns.forEach((col, idx) => {
+    const cell = headerRow.getCell(idx + 1);
+    cell.value = col.header;
+    cell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+    cell.font = { name: "Arial", size: 10, bold: true, color: { argb: "FFFFFFFF" } };
+    cell.fill = HEADER_FILL;
+    cell.border = BORDER_ALL;
+  });
+
+  // Data Rows
+  rows.forEach((rowData, rIdx) => {
+    const row = ws.getRow(rIdx + 2);
+    row.height = 22;
+
+    columns.forEach((col, cIdx) => {
+      const cell = row.getCell(cIdx + 1);
+      const val = rowData[col.key];
+      cell.value = val !== undefined && val !== null ? val : "";
+      cell.font = { name: "Arial", size: 9.5 };
+      cell.border = BORDER_ALL;
+
+      if (typeof val === "number") {
+        cell.alignment = { vertical: "middle", horizontal: "right" };
+        cell.numFmt = "#,##0.00";
+      } else {
+        cell.alignment = { vertical: "middle", horizontal: "left" };
+      }
+
+      if (rIdx % 2 === 1) {
+        cell.fill = {
+          type: "pattern",
+          pattern: "solid",
+          fgColor: { argb: "FFF8FAFC" }
+        };
+      }
+    });
+  });
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+  });
+
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName.endsWith(".xlsx") ? fileName : `${fileName}.xlsx`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  window.URL.revokeObjectURL(url);
+}
+

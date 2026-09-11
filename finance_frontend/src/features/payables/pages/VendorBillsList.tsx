@@ -239,7 +239,16 @@ export default function VendorBillsList() {
            <div className="p-6 text-black min-w-[650px] mx-auto bg-white">
              <div className="border-[2px] border-black bg-white text-black">
                 <div className="bg-[#fcb900] text-center p-3 border-b-[2px] border-black">
-                  <h1 className="font-bold text-lg">{selectedBill.companyName || selectedBill.vendorName}</h1>
+                  <h1 className="font-bold text-lg">
+                    {(() => {
+                      const comp = selectedBill.companyName || '';
+                      const vend = selectedBill.vendorName || '';
+                      if (comp && vend && comp.toLowerCase() !== vend.toLowerCase() && !comp.includes(vend)) {
+                        return `${comp} (${vend})`;
+                      }
+                      return comp || vend || 'Vendor Company Name';
+                    })()}
+                  </h1>
                   <p className="text-sm font-medium">{selectedBill.vendorAddress || 'Vendor Address and Contact Details'}</p>
                 </div>
 
