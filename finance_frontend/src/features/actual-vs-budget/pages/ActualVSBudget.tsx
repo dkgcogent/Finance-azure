@@ -3,14 +3,14 @@ import { Card, CardContent } from "@/components/ui/card"
 import { useGlobalStore } from "@/store/useGlobalStore";
 import { useActualVsBudget } from "../hooks/useActualVsBudget";
 import { MONTHS, ROWS } from "../api/actualVsBudgetService";
+import { exportActualVsBudgetExcel } from "../utils/generateActualVsBudgetExcel";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Loader2, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
-
-
 export default function ActualVSBudget() {
   const { financialYear: selectedYear, setFinancialYear: setSelectedYear } = useGlobalStore();
+  const [isExporting, setIsExporting] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState("All Months");
   const [selectedCustomer, setSelectedCustomer] = useState("All Customers");
   const [selectedProject, setSelectedProject] = useState("All Projects");
@@ -63,17 +63,33 @@ export default function ActualVSBudget() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" className="h-8" onClick={() => {
-            import('xlsx').then(XLSX => {
-              const table = document.getElementById('actual-vs-budget-table');
-              if (table) {
-                const clone = table.cloneNode(true) as HTMLTableElement;
-                const wb = XLSX.utils.table_to_book(clone, { raw: true });
-                XLSX.writeFile(wb, `Actual_VS_Budget_${selectedYear}.xlsx`);
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            disabled={isExporting}
+            onClick={async () => {
+              try {
+                setIsExporting(true);
+                await exportActualVsBudgetExcel({
+                  financialYear: selectedYear,
+                  budgetData,
+                  actualData,
+                  months: MONTHS,
+                  rows: ROWS
+                });
+              } catch (err) {
+                console.error("Failed to export Actual vs Budget Excel:", err);
+              } finally {
+                setIsExporting(false);
               }
-            });
-          }}>
-            <Download className="mr-2 h-4 w-4" />
+            }}
+          >
+            {isExporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
             Export
           </Button>
         </div>

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Modal } from "@/components/ui/modal"
 import { Plus, Save, Trash2, Download, Loader2 } from "lucide-react"
+import { exportDepreciationExcel } from "../utils/generateDepreciationExcel"
 
 type MonthKey = 'apr' | 'may' | 'jun' | 'jul' | 'aug' | 'sep' | 'oct' | 'nov' | 'dec' | 'jan' | 'feb' | 'mar';
 
@@ -70,6 +71,7 @@ const INITIAL_YEAR = "2026-2027";
 
 export default function Depreciation() {
   const { financialYear: selectedYear, setFinancialYear: setSelectedYear } = useGlobalStore();
+  const [isExporting, setIsExporting] = useState(false);
   const [data, setData] = useState<DepreciationRow[]>([]);
   const { data: serverData, isLoading: isQueryLoading } = useActualDepreciationQuery(selectedYear);
   const { mutateAsync: saveDepreciation, isPending: isSaving } = useSaveActualDepreciationMutation();
@@ -294,23 +296,33 @@ export default function Depreciation() {
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
-          <Button variant="outline" size="sm" className="h-8" onClick={() => {
-            import('xlsx').then(XLSX => {
-              const table = document.getElementById('export-table');
-              if (table) {
-                const clone = table.cloneNode(true) as Element;
-                const inputs = clone.querySelectorAll('input');
-                inputs.forEach(input => {
-                  const val = input.value;
-                  const parent = input.parentElement;
-                  if (parent) parent.textContent = val || '-';
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8"
+            disabled={isExporting}
+            onClick={async () => {
+              try {
+                setIsExporting(true);
+                await exportDepreciationExcel({
+                  financialYear: selectedYear,
+                  data: currentYearData,
+                  totals,
+                  monthHeaders: dynamicHeaders,
+                  moduleType: "actual"
                 });
-                const wb = XLSX.utils.table_to_book(clone, { raw: true });
-                XLSX.writeFile(wb, `Depreciation_actual_${selectedYear}.xlsx`);
+              } catch (err) {
+                console.error("Failed to export Depreciation Excel:", err);
+              } finally {
+                setIsExporting(false);
               }
-            });
-          }}>
-            <Download className="mr-2 h-4 w-4" />
+            }}
+          >
+            {isExporting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Download className="mr-2 h-4 w-4" />
+            )}
             Export
           </Button>
           <div className="space-y-1 text-right sm:text-left">

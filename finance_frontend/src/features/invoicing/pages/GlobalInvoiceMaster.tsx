@@ -209,6 +209,7 @@ export default function GlobalInvoiceMaster() {
     try {
       const res = await apiClient.get('/invoicing/global-master');
       setMasterRows(res.data);
+      setEditingRowIds(new Set());
     } catch (e) {
       console.error("Failed to fetch global master", e);
     } finally {
@@ -222,8 +223,9 @@ export default function GlobalInvoiceMaster() {
     setSaving(true);
     try {
       await apiClient.post('/invoicing/global-master/save', { rows: masterRows });
+      setEditingRowIds(new Set());
       alert("Manual overrides saved successfully!");
-      // Optionally re-fetch to see it merged from backend
+      // Re-fetch to see it merged from backend
       await fetchMaster();
     } catch (e) {
       console.error("Failed to save changes", e);

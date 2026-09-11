@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from "react"
+import React, { useState, useEffect, useMemo } from "react"
 import { Link } from "react-router-dom"
 import { Button } from "@/components/ui/button"
 import { Modal } from "@/components/ui/modal"
-import { ArrowLeft, CheckCircle2, Plus, Loader2 } from "lucide-react"
+import { ArrowLeft, CheckCircle2, Plus, Loader2, Calendar } from "lucide-react"
 import { apiClient } from "@/lib/api"
 
 type ImprestRow = {
@@ -42,12 +42,19 @@ const newDraftRow = (): ImprestRow => ({
 });
 
 export default function NewImprestRequest() {
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear();
+
   const [savedRows, setSavedRows] = useState<ImprestRow[]>([]);
   const [draftRows, setDraftRows] = useState<ImprestRow[]>([newDraftRow()]);
   const [submittingRowId, setSubmittingRowId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [validationError, setValidationError] = useState<{ rowId: string; message: string } | null>(null);
+
+  // Month & Year Filter State
+  const [selectedMonth, setSelectedMonth] = useState<number | "all">("all");
+  const [selectedYear, setSelectedYear] = useState<number | "all">("all");
 
   // Load previously saved imprests on mount
   useEffect(() => {
@@ -153,10 +160,37 @@ export default function NewImprestRequest() {
     }
   };
 
-  const allRows = [...savedRows, ...draftRows];
-  const totalAmount = allRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
-  const totalPass   = allRows.reduce((sum, r) => sum + (Number(r.passAmount) || 0), 0);
-  const totalCr     = allRows.reduce((sum, r) => sum + (Number(r.crAmount) || 0), 0);
+  // Filter saved rows based on selected month and year
+  const filteredSavedRows = useMemo(() => {
+    return savedRows.filter(row => {
+      if (!row.date) return true;
+      const parts = row.date.split('-');
+      if (parts.length >= 2) {
+        const rowYear = parseInt(parts[0], 10);
+        const rowMonth = parseInt(parts[1], 10);
+
+        if (selectedMonth !== "all" && rowMonth !== selectedMonth) {
+          return false;
+        }
+        if (selectedYear !== "all" && rowYear !== selectedYear) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [savedRows, selectedMonth, selectedYear]);
+
+  const isFilterActive = selectedMonth !== "all" || selectedYear !== "all";
+
+  const clearFilter = () => {
+    setSelectedMonth("all");
+    setSelectedYear("all");
+  };
+
+  const displayedRows = [...filteredSavedRows, ...draftRows];
+  const totalAmount = displayedRows.reduce((sum, r) => sum + (Number(r.amount) || 0), 0);
+  const totalPass   = displayedRows.reduce((sum, r) => sum + (Number(r.passAmount) || 0), 0);
+  const totalCr     = displayedRows.reduce((sum, r) => sum + (Number(r.crAmount) || 0), 0);
 
   return (
     <div className="flex-1 space-y-6 pb-8">
@@ -174,6 +208,53 @@ export default function NewImprestRequest() {
               Master / Daily imprest requisition form
             </p>
           </div>
+        </div>
+
+        {/* Month & Year Filter Controls */}
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="flex items-center gap-1.5 bg-white border border-zinc-200 rounded-md px-2.5 py-1.5 shadow-2xs">
+            <Calendar className="h-3.5 w-3.5 text-zinc-500" />
+            <span className="text-[11px] font-medium text-muted-foreground">Month:</span>
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value === "all" ? "all" : Number(e.target.value))}
+              className="bg-transparent text-xs text-zinc-800 font-medium outline-none cursor-pointer"
+            >
+              <option value="all">All Months</option>
+              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                <option key={m} value={m}>
+                  {new Date(2000, m - 1).toLocaleString("default", { month: "long" })}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1.5 bg-white border border-zinc-200 rounded-md px-2.5 py-1.5 shadow-2xs">
+            <span className="text-[11px] font-medium text-muted-foreground">Year:</span>
+            <select
+              value={selectedYear}
+              onChange={(e) => setSelectedYear(e.target.value === "all" ? "all" : Number(e.target.value))}
+              className="bg-transparent text-xs text-zinc-800 font-medium outline-none cursor-pointer"
+            >
+              <option value="all">All Years</option>
+              {[currentYear - 1, currentYear, currentYear + 1].map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {isFilterActive && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={clearFilter}
+              className="h-8 px-2.5 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 font-medium cursor-pointer"
+            >
+              Clear Filter
+            </Button>
+          )}
         </div>
       </div>
 
@@ -199,8 +280,8 @@ export default function NewImprestRequest() {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Saved / submitted rows — read-only */}
-                  {savedRows.map((row) => (
+                  {/* Saved / submitted rows — filtered by month & year */}
+                  {filteredSavedRows.map((row) => (
                     <tr key={row.id} className="border-b border-gray-200 bg-gray-50/50">
                       <td className="border-r border-gray-300 p-2.5 text-gray-600">{row.date}</td>
                       <td className="border-r border-gray-300 p-2.5 text-gray-700 font-medium">{row.head}</td>

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Modal } from "@/components/ui/modal"
 import { Plus, Save, Trash2, Download, Upload, Loader2 } from "lucide-react"
 import Papa from "papaparse"
+import { exportBankChargesExcel } from "../utils/generateBankChargesExcel"
 
 type MonthKey = 'apr' | 'may' | 'jun' | 'jul' | 'aug' | 'sep' | 'oct' | 'nov' | 'dec' | 'jan' | 'feb' | 'mar';
 
@@ -65,6 +66,7 @@ const INITIAL_DATA: BankChargeRow[] = [];
 
 export default function BankCharges() {
   const { financialYear: selectedYear, setFinancialYear: setSelectedYear } = useGlobalStore();
+  const [isExporting, setIsExporting] = useState(false);
   const [data, setData] = useState<BankChargeRow[]>([]);
   const { data: serverData, isLoading: isQueryLoading } = useActualBankChargesQuery(selectedYear);
   const { mutateAsync: saveBankCharges, isPending: isSaving } = useSaveActualBankChargesMutation();
@@ -343,30 +345,34 @@ export default function BankCharges() {
         </div>
         <div className="flex flex-col items-end gap-2">
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" className="h-8" onClick={() => document.getElementById('csvUpload')?.click()}>
-              <Upload className="mr-2 h-4 w-4" />
-              Upload Statement
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8"
+              disabled={isExporting}
+              onClick={async () => {
+                try {
+                  setIsExporting(true);
+                  await exportBankChargesExcel({
+                    financialYear: selectedYear,
+                    data: currentYearData,
+                    totals,
+                    monthHeaders: dynamicHeaders
+                  });
+                } catch (err) {
+                  console.error("Failed to export Bank Charges Excel:", err);
+                } finally {
+                  setIsExporting(false);
+                }
+              }}
+            >
+              {isExporting ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="mr-2 h-4 w-4" />
+              )}
+              Export
             </Button>
-            <input type="file" id="csvUpload" accept=".csv" className="hidden" onChange={handleFileUpload} />
-            <Button variant="outline" size="sm" className="h-8" onClick={() => {
-            import('xlsx').then(XLSX => {
-              const table = document.getElementById('export-table');
-              if (table) {
-                const clone = table.cloneNode(true) as Element;
-                const inputs = clone.querySelectorAll('input');
-                inputs.forEach(input => {
-                  const val = input.value;
-                  const parent = input.parentElement;
-                  if (parent) parent.textContent = val || '-';
-                });
-                const wb = XLSX.utils.table_to_book(clone, { raw: true });
-                XLSX.writeFile(wb, `BankCharges_actual_${selectedYear}.xlsx`);
-              }
-            });
-          }}>
-            <Download className="mr-2 h-4 w-4" />
-            Export
-          </Button>
           </div>
           <div className="space-y-1 text-right sm:text-left">
             <label className="text-xs font-medium text-muted-foreground">Financial Year</label>
