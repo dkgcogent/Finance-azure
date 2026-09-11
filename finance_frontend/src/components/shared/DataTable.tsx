@@ -38,13 +38,15 @@ interface DataTableProps<TData, TValue> {
   data: TData[]
   searchPlaceholder?: string
   hideToolbarOptions?: boolean
+  toolbarRight?: React.ReactNode
 }
 
 export function DataTable<TData, TValue>({
   columns,
   data,
   searchPlaceholder = "Search all columns...",
-  hideToolbarOptions = false
+  hideToolbarOptions = false,
+  toolbarRight
 }: DataTableProps<TData, TValue>) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState("")
@@ -99,7 +101,7 @@ export function DataTable<TData, TValue>({
   return (
     <div className="space-y-4">
       {/* Table Toolbar */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-3">
         <div className="relative w-full sm:w-72">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <input
@@ -110,6 +112,12 @@ export function DataTable<TData, TValue>({
             className="flex h-9 w-full rounded-md border border-input bg-transparent pl-8 pr-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           />
         </div>
+
+        {toolbarRight && (
+          <div className="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+            {toolbarRight}
+          </div>
+        )}
         
         <div className={`flex items-center gap-2 w-full sm:w-auto ${hideToolbarOptions ? 'hidden' : ''}`}>
           <div className="relative">

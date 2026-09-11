@@ -589,13 +589,76 @@ export default function VendorPaymentSheet() {
     []
   );
 
+  const [listFromDate, setListFromDate] = useState<string>('');
+  const [listToDate, setListToDate] = useState<string>('');
+  const [listMonth, setListMonth] = useState<number | "all">("all");
+  const [listYear, setListYear] = useState<number | "all">("all");
+
+  const parseCreatedDateInfo = (createdAt?: string) => {
+    if (!createdAt) return null;
+    const d = new Date(createdAt);
+    if (!isNaN(d.getTime())) {
+      const year = d.getFullYear();
+      const month = d.getMonth() + 1;
+      const day = d.getDate();
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      return { dateStr, month, year };
+    }
+    const clean = createdAt.split('T')[0].split(' ')[0];
+    const parts = clean.split('-');
+    if (parts.length === 3) {
+      return {
+        dateStr: `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`,
+        year: parseInt(parts[0], 10),
+        month: parseInt(parts[1], 10)
+      };
+    }
+    return null;
+  };
+
+  const filteredSavedSheets = useMemo(() => {
+    return savedBankSheets.filter(sheet => {
+      const createdInfo = parseCreatedDateInfo(sheet.createdAt);
+      if (!createdInfo) return true;
+
+      // 1. Filter strictly by Generated On Date Range (From & To)
+      if (listFromDate && createdInfo.dateStr < listFromDate) {
+        return false;
+      }
+      if (listToDate && createdInfo.dateStr > listToDate) {
+        return false;
+      }
+
+      // 2. Filter strictly by Generated On Month
+      if (listMonth !== "all" && createdInfo.month !== listMonth) {
+        return false;
+      }
+
+      // 3. Filter strictly by Generated On Year
+      if (listYear !== "all" && createdInfo.year !== listYear) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [savedBankSheets, listFromDate, listToDate, listMonth, listYear]);
+
+  const isListFilterActive = !!(listFromDate || listToDate || listMonth !== "all" || listYear !== "all");
+
+  const clearListFilters = () => {
+    setListFromDate('');
+    setListToDate('');
+    setListMonth('all');
+    setListYear('all');
+  };
+
   const totalSavedAmount = useMemo(() => {
-    return savedBankSheets.reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
-  }, [savedBankSheets]);
+    return filteredSavedSheets.reduce((sum, b) => sum + Number(b.totalAmount || 0), 0);
+  }, [filteredSavedSheets]);
 
   const totalSavedVendors = useMemo(() => {
-    return savedBankSheets.reduce((sum, b) => sum + Number(b.totalEntries || 0), 0);
-  }, [savedBankSheets]);
+    return filteredSavedSheets.reduce((sum, b) => sum + Number(b.totalEntries || 0), 0);
+  }, [filteredSavedSheets]);
 
   const columns = useMemo<ColumnDef<VendorPaymentEntry>[]>(
     () => [
@@ -767,9 +830,71 @@ export default function VendorPaymentSheet() {
             <div className="[&_td]:py-3 [&_th]:py-3.5 [&_tr]:border-b [&_table]:w-full overflow-x-auto">
               <DataTable 
                 columns={savedBankSheetColumns} 
-                data={savedBankSheets} 
+                data={filteredSavedSheets} 
                 searchPlaceholder="Search by Excel name, month, or batch ID..." 
                 hideToolbarOptions 
+                toolbarRight={
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200 rounded-md px-2 py-1 shadow-2xs">
+                      <Calendar className="h-3.5 w-3.5 text-zinc-400" />
+                      <span className="text-[11px] text-muted-foreground font-medium">From:</span>
+                      <input 
+                        type="date" 
+                        value={listFromDate} 
+                        onChange={(e) => setListFromDate(e.target.value)}
+                        className="bg-transparent text-xs outline-none cursor-pointer text-zinc-800"
+                      />
+                    </div>
+
+                    <div className="flex items-center gap-1.5 bg-zinc-50 border border-zinc-200 rounded-md px-2 py-1 shadow-2xs">
+                      <Calendar className="h-3.5 w-3.5 text-zinc-400" />
+                      <span className="text-[11px] text-muted-foreground font-medium">To:</span>
+                      <input 
+                        type="date" 
+                        value={listToDate} 
+                        onChange={(e) => setListToDate(e.target.value)}
+                        className="bg-transparent text-xs outline-none cursor-pointer text-zinc-800"
+                      />
+                    </div>
+
+                    <select
+                      value={listMonth}
+                      onChange={(e) => setListMonth(e.target.value === "all" ? "all" : Number(e.target.value))}
+                      className="h-8 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 text-xs text-zinc-800 shadow-2xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer font-medium"
+                    >
+                      <option value="all">All Months</option>
+                      {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                        <option key={m} value={m}>
+                          {new Date(2000, m - 1).toLocaleString("default", { month: "long" })}
+                        </option>
+                      ))}
+                    </select>
+
+                    <select
+                      value={listYear}
+                      onChange={(e) => setListYear(e.target.value === "all" ? "all" : Number(e.target.value))}
+                      className="h-8 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 text-xs text-zinc-800 shadow-2xs focus:outline-none focus:ring-1 focus:ring-ring cursor-pointer font-medium"
+                    >
+                      <option value="all">All Years</option>
+                      {[currentDate.getFullYear() - 1, currentDate.getFullYear(), currentDate.getFullYear() + 1].map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+
+                    {isListFilterActive && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={clearListFilters}
+                        className="h-8 px-2 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50 cursor-pointer font-medium"
+                      >
+                        Clear Filters
+                      </Button>
+                    )}
+                  </div>
+                }
               />
             </div>
           )}
