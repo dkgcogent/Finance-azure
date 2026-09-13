@@ -356,41 +356,144 @@ export const fetchSalaries = async (year: string) => {
     grouped[key][row.month] = parseFloat(row.amount);
   });
 
-  const query = `
-    SELECT 
-      e.id as emp_id,
-      CONCAT(e.first_name, ' ', e.last_name) as name_of_employee,
-      p.month,
-      p.year as cal_year,
-      p.gross_salary as amount
-    FROM hrms_payslips p
-    JOIN hrms_employees e ON p.employee_id = e.id
-    WHERE (p.year = ? AND p.month >= 4) OR (p.year = ? AND p.month <= 3)
-  `;
-  const [hrmsRows]: any = await db.query(query, [startYear, endYear]);
+  // Query HRMS employees with their work location (Customer & City) and designation
+  let empRows: any[] = [];
+  try {
+    const [rows]: any = await db.query(`
+      SELECT 
+        e.id,
+        e.employee_id,
+        CONCAT(TRIM(e.first_name), ' ', IFNULL(TRIM(e.last_name), '')) AS full_name,
+        e.first_name,
+        e.last_name,
+        e.designation_id,
+        e.work_location_id,
+        d.name AS designation_name,
+        wl.name AS work_location_name,
+        wl.city AS work_location_city
+      FROM hrms_employees e
+      LEFT JOIN hrms_designations d ON e.designation_id = d.id
+      LEFT JOIN hrms_work_locations wl ON e.work_location_id = wl.id
+    `);
+    empRows = rows;
+  } catch (err) {
+    console.error('Error fetching hrms employee join details:', err);
+  }
 
-  const monthMap: Record<number, string> = {
+  const empById = new Map<number, any>();
+  const empByCode = new Map<string, any>();
+  const empByName = new Map<string, any>();
+
+  empRows.forEach((emp: any) => {
+    if (emp.id) empById.set(Number(emp.id), emp);
+    if (emp.employee_id) empByCode.set(String(emp.employee_id).trim().toLowerCase(), emp);
+    const cleanFullName = String(emp.full_name || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    if (cleanFullName) empByName.set(cleanFullName, emp);
+  });
+
+  // Query only APPROVED payment sheets from HRMS
+  const [approvedSheets]: any = await db.query(
+    `SELECT id, month_str, start_date, end_date, status, approved_date, total_employees, total_gross, total_net, sheet_data
+     FROM hrms_payment_sheets
+     WHERE status = 'APPROVED'
+     ORDER BY id ASC`
+  );
+
+  const monthKeyMap: Record<number, Month> = {
     4: 'apr', 5: 'may', 6: 'jun', 7: 'jul', 8: 'aug', 9: 'sep', 10: 'oct', 11: 'nov', 12: 'dec',
     1: 'jan', 2: 'feb', 3: 'mar'
   };
 
-  hrmsRows.forEach((row: any) => {
-    const key = `HRMS-Salary-${row.emp_id}`;
-    if (!grouped[key]) {
-      grouped[key] = {
-        head: 'Gross Salary (HRMS)',
-        customer: '-',
-        project: '-',
-        location: '-',
-        designation: '-',
-        nameOfEmployee: row.name_of_employee,
-        year: year
-      };
+  const monthNames = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+  approvedSheets.forEach((sheet: any) => {
+    let sheetMonthNum: number | null = null;
+    let sheetYearNum: number | null = null;
+
+    // 1. Try parsing month_str (e.g. "Sep 2026", "Sep-26", "September 2026", "09/2026")
+    if (sheet.month_str) {
+      const mStr = String(sheet.month_str).toLowerCase();
+      const mIdx = monthNames.findIndex(m => mStr.includes(m));
+      if (mIdx !== -1) {
+        sheetMonthNum = mIdx + 1;
+      }
+      const yMatch = mStr.match(/\b(20\d\d|\d{2})\b/);
+      if (yMatch) {
+        const y = parseInt(yMatch[1], 10);
+        sheetYearNum = y < 100 ? 2000 + y : y;
+      }
     }
-    const mStr = monthMap[row.month];
-    if (mStr) {
-      grouped[key][mStr] = parseFloat(row.amount);
+
+    // 2. Fallback to start_date, end_date, or approved_date
+    const refDate = sheet.end_date || sheet.start_date || sheet.approved_date;
+    if (refDate && (!sheetMonthNum || !sheetYearNum)) {
+      const d = new Date(refDate);
+      if (!isNaN(d.getTime())) {
+        if (!sheetMonthNum) sheetMonthNum = d.getMonth() + 1;
+        if (!sheetYearNum) sheetYearNum = d.getFullYear();
+      }
     }
+
+    if (!sheetMonthNum || !sheetYearNum) return;
+
+    // 3. Verify that it falls in the target FY: [startYear-04 to endYear-03]
+    const isInFy = (sheetYearNum === startYear && sheetMonthNum >= 4) || (sheetYearNum === endYear && sheetMonthNum <= 3);
+    if (!isInFy) return;
+
+    const mKey = monthKeyMap[sheetMonthNum];
+    if (!mKey) return;
+
+    // 4. Parse sheet_data
+    let sheetData: any[] = [];
+    if (typeof sheet.sheet_data === 'string') {
+      try {
+        sheetData = JSON.parse(sheet.sheet_data);
+      } catch (e) {
+        sheetData = [];
+      }
+    } else if (Array.isArray(sheet.sheet_data)) {
+      sheetData = sheet.sheet_data;
+    }
+
+    sheetData.forEach((row: any) => {
+      const rawCode = String(row.employeeCode || row.employee_code || '').trim();
+      const rawName = String(row.employeeName || row.employee_name || row.name || '').trim();
+      const rawId = row.employeeId || row.employee_id || row.id;
+
+      let matchedEmp: any = null;
+      if (rawId && empById.has(Number(rawId))) {
+        matchedEmp = empById.get(Number(rawId));
+      } else if (rawCode && empByCode.has(rawCode.toLowerCase())) {
+        matchedEmp = empByCode.get(rawCode.toLowerCase());
+      } else if (rawName) {
+        const normName = rawName.replace(/\s+/g, ' ').toLowerCase();
+        if (empByName.has(normName)) {
+          matchedEmp = empByName.get(normName);
+        }
+      }
+
+      const head = 'Manpower';
+      const customer = matchedEmp?.work_location_name || '-';
+      const project = '-';
+      const location = matchedEmp?.work_location_city || '-';
+      const designation = matchedEmp?.designation_name || row.designation || '-';
+      const nameOfEmployee = matchedEmp?.full_name?.trim() || rawName || 'Unknown';
+      const grossAmount = parseFloat(row.grossSalary ?? row.gross_salary ?? row.grossAmount ?? row.gross_amount ?? row.totalGross ?? row.netSalary ?? row.net_salary ?? 0) || 0;
+
+      const key = `${head}-${customer}-${project}-${location}-${designation}-${nameOfEmployee}`;
+      if (!grouped[key]) {
+        grouped[key] = {
+          head: head,
+          customer: customer,
+          project: project,
+          location: location,
+          designation: designation,
+          nameOfEmployee: nameOfEmployee,
+          year: year
+        };
+      }
+      grouped[key][mKey] = (grouped[key][mKey] || 0) + grossAmount;
+    });
   });
 
   return Object.values(grouped);
@@ -413,10 +516,10 @@ export const upsertSalaries = async (year: string, data: any[]) => {
       [year]
     );
 
-    // 3. Delete salaries that are no longer present in incoming data
+    // 3. Delete salaries that are no longer present in incoming data (skip HRMS auto rows)
     for (const row of existingRows) {
       const key = `${row.head}|||${row.customer}|||${row.project}|||${row.location}|||${row.designation}|||${row.name_of_employee}`;
-      if (!incomingKeys.has(key)) {
+      if (!incomingKeys.has(key) && !row.head.endsWith('(HRMS)')) {
         await connection.query(
           `DELETE FROM actual_salaries WHERE financial_year = ? AND head = ? AND customer = ? AND project = ? AND location = ? AND designation = ? AND name_of_employee = ?`,
           [year, row.head, row.customer, row.project, row.location, row.designation, row.name_of_employee]
@@ -428,15 +531,19 @@ export const upsertSalaries = async (year: string, data: any[]) => {
     for (const row of data) {
       if (!headTotals[row.head]) headTotals[row.head] = 0;
 
+      const isHrms = row.head.endsWith('(HRMS)');
+
       for (const month of MONTHS) {
         const amount = row[month] || 0.00;
 
-        await connection.query(
-          `INSERT INTO actual_salaries (financial_year, head, customer, project, location, designation, name_of_employee, month, amount)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-           ON DUPLICATE KEY UPDATE amount = VALUES(amount)`,
-          [year, row.head, row.customer, row.project, row.location, row.designation, row.nameOfEmployee, month, amount]
-        );
+        if (!isHrms) {
+          await connection.query(
+            `INSERT INTO actual_salaries (financial_year, head, customer, project, location, designation, name_of_employee, month, amount)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE amount = VALUES(amount)`,
+            [year, row.head, row.customer, row.project, row.location, row.designation, row.nameOfEmployee, month, amount]
+          );
+        }
         headTotals[row.head] += amount;
         moduleTotal += amount;
       }
