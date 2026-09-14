@@ -186,6 +186,9 @@ export const invoiceService = {
         TypeOfServices as typeOfServices,
         ServiceCode as serviceCode,
         GSTNo as gstNo, 
+        BillingTenure as billingTenure,
+        DATE_FORMAT(BillingFromDate, '%Y-%m-%d') as billingFromDate,
+        DATE_FORMAT(BillingToDate, '%Y-%m-%d') as billingToDate,
         HouseFlatNo as houseFlatNo,
         StreetLocality as streetLocality,
         CustomerCity as city,
@@ -218,6 +221,8 @@ export const invoiceService = {
         TypeOfBilling as typeOfBilling, 
         GSTRate as gstRate, 
         BillingTenure as billingTenure,
+        DATE_FORMAT(BillingFromDate, '%Y-%m-%d') as billingFromDate,
+        DATE_FORMAT(BillingToDate, '%Y-%m-%d') as billingToDate,
         Location as location,
         State as state
       FROM project
@@ -543,6 +548,8 @@ export const invoiceService = {
             TypeOfBilling,
             GSTRate,
             BillingTenure,
+            BillingFromDate,
+            BillingToDate,
             Location,
             State
           FROM project
@@ -564,6 +571,8 @@ export const invoiceService = {
             typeOfBilling: p.TypeOfBilling,
             gstRate: p.GSTRate,
             billingTenure: p.BillingTenure,
+            billingFromDate: p.BillingFromDate,
+            billingToDate: p.BillingToDate,
             location: p.Location,
             state: p.State
           };

@@ -10,4 +10,8 @@ router.post('/save', vendorController_1.saveVendorInvoice);
 router.get('/invoices', vendorController_1.getVendorInvoicesList);
 router.post('/cndn/save', vendorController_1.saveVendorCNDN);
 router.get('/cndn/list', vendorController_1.getVendorCNDNList);
+// Vendor Bank Payment Sheet routes
+router.post('/bank-payment-sheets', vendorController_1.saveVendorBankPaymentSheet);
+router.get('/bank-payment-sheets', vendorController_1.getVendorBankPaymentSheets);
+router.get('/bank-payment-sheets/:batchId', vendorController_1.getVendorBankPaymentSheetBatch);
 exports.default = router;
