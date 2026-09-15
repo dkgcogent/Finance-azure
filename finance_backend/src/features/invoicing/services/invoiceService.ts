@@ -211,7 +211,7 @@ export const invoiceService = {
   },
 
   getProjects: async () => {
-    const [rows] = await db.query(`
+    const [rows]: any = await db.query(`
       SELECT 
         ProjectID as id, 
         ProjectName as name, 
@@ -221,8 +221,11 @@ export const invoiceService = {
         TypeOfBilling as typeOfBilling, 
         GSTRate as gstRate, 
         BillingTenure as billingTenure,
-        DATE_FORMAT(BillingFromDate, '%Y-%m-%d') as billingFromDate,
-        DATE_FORMAT(BillingToDate, '%Y-%m-%d') as billingToDate,
+        BillingTenure as BillingTenure,
+        COALESCE(DATE_FORMAT(BillingFromDate, '%Y-%m-%d'), BillingFromDate) as billingFromDate,
+        COALESCE(DATE_FORMAT(BillingToDate, '%Y-%m-%d'), BillingToDate) as billingToDate,
+        BillingFromDate,
+        BillingToDate,
         Location as location,
         State as state
       FROM project
