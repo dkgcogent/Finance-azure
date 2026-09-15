@@ -390,8 +390,14 @@ export async function generateVendorInvoiceExcel(params: VendorInvoiceExcelParam
   // Format period description
   let periodStr = "";
   if (startDate && endDate) {
-    const start = new Date(startDate);
-    const end = new Date(endDate);
+    const start = startDate.includes("T") || startDate.includes("-") ? (() => {
+      const [y, m, d] = startDate.split("T")[0].split("-").map(Number);
+      return new Date(y, m - 1, d);
+    })() : new Date(startDate);
+    const end = endDate.includes("T") || endDate.includes("-") ? (() => {
+      const [y, m, d] = endDate.split("T")[0].split("-").map(Number);
+      return new Date(y, m - 1, d);
+    })() : new Date(endDate);
     if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
       const startMonth = FULL_MONTHS[start.getMonth()];
       const endMonth = FULL_MONTHS[end.getMonth()];

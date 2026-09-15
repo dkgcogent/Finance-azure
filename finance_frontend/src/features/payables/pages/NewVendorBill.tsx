@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from "react"
+import React, { useState, useRef, useMemo, useEffect } from "react"
 import * as XLSX from "xlsx"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -12,48 +12,6 @@ import { useVendors, useVendorTrips, useCreateVendorInvoice, useNextVendorInvoic
 import { useMasterData } from "@/features/invoicing/hooks/useInvoiceReports"
 import { generateVendorInvoiceExcel } from "../utils/generateVendorInvoiceExcel"
 import { exportTableToExcel } from "@/lib/excelExportHelper"
-
-const mockAnnexureData = [
-  { sno: 1, location: "SATELLITEHUB_ALD", trips: 3, rates: 1890, extraKm: 155, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 5670, extraKmCost: 1217, dcmCharges: 300, totalAmount: 7187 },
-  { sno: 2, location: "SATELLITEHUB_ALDNAINI", trips: 7, rates: 1890, extraKm: 259, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 13230, extraKmCost: 2033, dcmCharges: 0, totalAmount: 15263 },
-  { sno: 3, location: "SATELLITEHUB_BARABANKI", trips: 28, rates: 1890, extraKm: 1556, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 52920, extraKmCost: 12215, dcmCharges: 0, totalAmount: 65135 },
-  { sno: 4, location: "SATELLITEHUB_DEO2", trips: 17, rates: 1890, extraKm: 968, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 32130, extraKmCost: 7599, dcmCharges: 1700, totalAmount: 41429 },
-  { sno: 5, location: "SATELLITEHUB_BALLIA", trips: 1, rates: 1890, extraKm: 110, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 1890, extraKmCost: 864, dcmCharges: 0, totalAmount: 2754 },
-  { sno: 6, location: "SATELLITEHUB_GHAZIPUR", trips: 1, rates: 1890, extraKm: 36, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 1890, extraKmCost: 283, dcmCharges: 100, totalAmount: 2273 },
-  { sno: 7, location: "SATELLITEHUB_GKP", trips: 7, rates: 1890, extraKm: 342, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 13230, extraKmCost: 2685, dcmCharges: 700, totalAmount: 16615 },
-  { sno: 8, location: "SATELLITEHUB_GKPMEDICAL", trips: 3, rates: 1890, extraKm: 107, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 5670, extraKmCost: 840, dcmCharges: 0, totalAmount: 6510 },
-  { sno: 10, location: "SATELLITEHUB_KNP", trips: 2, rates: 1890, extraKm: 0, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 3780, extraKmCost: 0, dcmCharges: 200, totalAmount: 3980 },
-  { sno: 11, location: "SATELLITEHUB_LKORAJAJI", trips: 1, rates: 1890, extraKm: 0, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 1890, extraKmCost: 0, dcmCharges: 0, totalAmount: 1890 },
-  { sno: "", location: "SATELLITEHUB_AZAMGARH", trips: 4, rates: 1890, extraKm: 93, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 7560, extraKmCost: 730, dcmCharges: 0, totalAmount: 8290 },
-  { sno: 12, location: "SATELLITEHUB_MAU", trips: 5, rates: 1890, extraKm: 228, extraKmRate: 7.85, extraHrsRate: 63, fixedCost: 9450, extraKmCost: 1790, dcmCharges: 500, totalAmount: 11740 },
-]
-
-const mockMisData = [
-  { loc: "UP Large LM", vendor: "SENT LOGISTICS PRIVATE LIM...", vehNo: "UP51AT9093", vehType: "TATA ACE", ownType: "Adhoc", driverType: "Driver Cum Helpe", inTime: "9:03", outTime: "19:04", startOdo: 53077, endOdo: 53213, dist: 136, extKm: 36, extKmRate: 7.35, fixCost: 1890, extKmCost: 265, dcm: 100, total: 2255 },
-  { loc: "UP Large LM", vendor: "SENT LOGISTICS PRIVATE LIM...", vehNo: "UP52AT6928", vehType: "TATA ACE", ownType: "Adhoc", driverType: "Driver Cum Helpe", inTime: "7:46", outTime: "21:26", startOdo: 15084, endOdo: 15237, dist: 153, extKm: 53, extKmRate: 7.35, fixCost: 1890, extKmCost: 390, dcm: 100, total: 2380 },
-  { loc: "UP Large LM", vendor: "SENT LOGISTICS PRIVATE LIM...", vehNo: "UP52AT6928", vehType: "TATA ACE", ownType: "Adhoc", driverType: "Driver Cum Helpe", inTime: "8:26", outTime: "19:19", startOdo: 152037, endOdo: 152205, dist: 168, extKm: 68, extKmRate: 7.35, fixCost: 1890, extKmCost: 500, dcm: 100, total: 2490 },
-  { loc: "UP Large LM", vendor: "SENT LOGISTICS PRIVATE LIM...", vehNo: "UP52AT6928", vehType: "TATA ACE", ownType: "Adhoc", driverType: "Driver Cum Helpe", inTime: "8:55", outTime: "20:35", startOdo: 152205, endOdo: 152365, dist: 160, extKm: 60, extKmRate: 7.35, fixCost: 1890, extKmCost: 441, dcm: 100, total: 2431 },
-  { loc: "UP Large LM", vendor: "SENT LOGISTICS PRIVATE LIM...", vehNo: "UP32LN4846", vehType: "TATA ACE", ownType: "Adhoc", driverType: "Driver", inTime: "8:23", outTime: "20:10", startOdo: 204561, endOdo: 204655, dist: 94, extKm: 0, extKmRate: 7.35, fixCost: 1890, extKmCost: 0, dcm: 0, total: 1890 },
-  { loc: "UP Large LM", vendor: "SENT LOGISTICS PRIVATE LIM...", vehNo: "UP70MT2942", vehType: "TATA ACE", ownType: "Adhoc", driverType: "Driver Cum Helpe", inTime: "7:00", outTime: "19:30", startOdo: 73859, endOdo: 74054, dist: 195, extKm: 95, extKmRate: 7.35, fixCost: 1890, extKmCost: 698, dcm: 100, total: 2688 },
-  { loc: "UP Large LM", vendor: "SENT LOGISTICS PRIVATE LIM...", vehNo: "UP32LN4846", vehType: "TATA ACE", ownType: "Adhoc", driverType: "Driver", inTime: "7:00", outTime: "21:30", startOdo: 204955, endOdo: 205112, dist: 157, extKm: 57, extKmRate: 7.35, fixCost: 1890, extKmCost: 419, dcm: 0, total: 2309 },
-  { loc: "UP Large LM", vendor: "SENT LOGISTICS PRIVATE LIM...", vehNo: "UP41AT2831", vehType: "TATA ACE", ownType: "Adhoc", driverType: "Driver", inTime: "9:13", outTime: "20:35", startOdo: 146826, endOdo: 146973, dist: 147, extKm: 47, extKmRate: 7.35, fixCost: 1890, extKmCost: 345, dcm: 0, total: 2235 },
-  { loc: "UP Large LM", vendor: "SENT LOGISTICS PRIVATE LIM...", vehNo: "UP70MT2944", vehType: "TATA ACE", ownType: "Adhoc", driverType: "Driver", inTime: "9:35", outTime: "21:17", startOdo: 79427, endOdo: 79561, dist: 134, extKm: 34, extKmRate: 7.35, fixCost: 1890, extKmCost: 250, dcm: 0, total: 2140 },
-  { loc: "UP Large LM", vendor: "SENT LOGISTICS PRIVATE LIM...", vehNo: "UP41AT1610", vehType: "TATA ACE", ownType: "Adhoc", driverType: "Driver", inTime: "8:23", outTime: "20:10", startOdo: 91645, endOdo: 91796, dist: 151, extKm: 51, extKmRate: 7.35, fixCost: 1890, extKmCost: 375, dcm: 0, total: 2265 },
-]
-
-const mockFixedAnnexureData = [
-  { sno: 1, vehNo: "UP70LT0371", vehType: "Tata Ace", mode: "UP Large LM", loc: "SATELLITEHUB_ALD", vertical: "LM", hrs: 12, fixedKms: 1000, agRate: 34650, dieselHike: 0, totWithHike: 34650, workDays: 30, actualDays: 30, totKms: 3182, extHrAmt: 60, extHr: 0, extHrRate: 0, extKmRate: 7.35, dynFuel: 0.50, totExtKmRate: 7.85, perDayCost: 1155, perDayKm: 33.33, actualDeployed: 34650, extKm: 2182, extKmCharge: 17129, totalAmt: 51779, toll: 0, dcm: 3000, finalAmt: 54779 },
-  { sno: 2, vehNo: "UP70JT2517", vehType: "Tata Ace", mode: "UP Large LM", loc: "SATELLITEHUB_ALDNAINI", vertical: "LM", hrs: 12, fixedKms: 1000, agRate: 34650, dieselHike: 0, totWithHike: 34650, workDays: 30, actualDays: 30, totKms: 4647, extHrAmt: 60, extHr: 0, extHrRate: 0, extKmRate: 7.35, dynFuel: 0.50, totExtKmRate: 7.85, perDayCost: 1155, perDayKm: 33.33, actualDeployed: 34650, extKm: 3647, extKmCharge: 28629, totalAmt: 63279, toll: 0, dcm: 0, finalAmt: 63279 },
-  { sno: 3, vehNo: "UP32RN3101", vehType: "Tata Ace", mode: "UP Large LM", loc: "SATELLITEHUB_ALDNAINI", vertical: "LM", hrs: 12, fixedKms: 1000, agRate: 34650, dieselHike: 0, totWithHike: 34650, workDays: 30, actualDays: 30, totKms: 4185, extHrAmt: 60, extHr: 0, extHrRate: 0, extKmRate: 7.35, dynFuel: 0.50, totExtKmRate: 7.85, perDayCost: 1155, perDayKm: 33.33, actualDeployed: 34650, extKm: 3185, extKmCharge: 25005, totalAmt: 59655, toll: 0, dcm: 0, finalAmt: 59655 },
-]
-
-const mockFixedMisData = [
-  { date: "01-06-2026", hub: "SATELLITEHUB_VNS", loc: "UP Large LM", vendor: "COGENT LOGISTICS PRIVATE...", vehNo: "UP65QT1502", vehType: "TATA ACE", parentVeh: "UP65QT1502", ownType: "Regular", driverType: "Driver Cum Helper", inTime: "6.55", outTime: "20.36", startOdo: 27388, endOdo: 27446, dist: 58 },
-  { date: "01-06-2026", hub: "SATELLITEHUB_VNS", loc: "UP Large LM", vendor: "COGENT LOGISTICS PRIVATE...", vehNo: "UP65KT8928", vehType: "TATA ACE", parentVeh: "UP65KT8928", ownType: "Regular", driverType: "Driver", inTime: "7.46", outTime: "21.26", startOdo: 118207, endOdo: 118310, dist: 103 },
-  { date: "01-06-2026", hub: "SATELLITEHUB_BNS", loc: "UP Large LM", vendor: "COGENT LOGISTICS PRIVATE...", vehNo: "UP65GT6138", vehType: "TATA ACE", parentVeh: "UP65GT6138", ownType: "Regular", driverType: "Driver", inTime: "8.20", outTime: "22.06", startOdo: 147527, endOdo: 147627, dist: 100 },
-  { date: "01-06-2026", hub: "SATELLITEHUB_BALLIA", loc: "UP Large LM", vendor: "COGENT LOGISTICS PRIVATE...", vehNo: "UP54AT3575", vehType: "TATA ACE", parentVeh: "UP54AT3575", ownType: "Regular", driverType: "Driver", inTime: "6.50", outTime: "21.46", startOdo: 135226, endOdo: 135342, dist: 116 },
-]
-
 import { numberToWords } from "@/lib/utils"
 
 export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
@@ -66,8 +24,60 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
   const [linkedInvoice, setLinkedInvoice] = useState("")
   const [vehicleType, setVehicleType] = useState("")
   const [vendorId, setVendorId] = useState("")
-  const [startDate, setStartDate] = useState("")
-  const [endDate, setEndDate] = useState("")
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  const toISODateString = (val: any): string => {
+    if (!val) return '';
+    if (typeof val === 'string') {
+      const s = val.trim();
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+        return s.slice(0, 10);
+      }
+      const dmyMatch = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+      if (dmyMatch) {
+        const day = dmyMatch[1].padStart(2, '0');
+        const month = dmyMatch[2].padStart(2, '0');
+        const year = dmyMatch[3];
+        return `${year}-${month}-${day}`;
+      }
+    }
+    const dt = new Date(val);
+    if (!isNaN(dt.getTime())) {
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, '0');
+      const d = String(dt.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    return '';
+  };
+
+  const getMonthRange = (monthStr: string) => {
+    if (!monthStr) return { start: '', end: '' };
+    const [yStr, mStr] = monthStr.split('-');
+    const y = parseInt(yStr, 10);
+    const m = parseInt(mStr, 10);
+    if (isNaN(y) || isNaN(m)) return { start: '', end: '' };
+    const start = `${y}-${String(m).padStart(2, '0')}-01`;
+    const lastDay = new Date(y, m, 0).getDate();
+    const end = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    return { start, end };
+  };
+
+  const [startDate, setStartDate] = useState(() => {
+    const today = new Date();
+    const mStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const [y, m] = mStr.split('-').map(Number);
+    return `${y}-${String(m).padStart(2, '0')}-01`;
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const today = new Date();
+    const [y, m] = [today.getFullYear(), today.getMonth() + 1];
+    const lastDay = new Date(y, m, 0).getDate();
+    return `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  });
   const [issueDate, setIssueDate] = useState(new Date().toISOString().split('T')[0])
   const [costCode, setCostCode] = useState("")
 
@@ -99,7 +109,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     [customers, customerId]
   );
   const selectedProject = useMemo(() =>
-    projects.find((p: any) => String(p.id) === String(projectId)),
+    projects.find((p: any) => String(p.id) === String(projectId) || String(p.name) === String(projectId)),
     [projects, projectId]
   );
   const selectedLocation = useMemo(() =>
@@ -110,6 +120,37 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     vendors?.find((v: any) => String(v.id) === String(vendorId)),
     [vendors, vendorId]
   );
+
+  const isSpecificDatesTenure = useMemo(() => {
+    const tenure = (selectedProject?.billingTenure || selectedProject?.BillingTenure || '').trim().toLowerCase();
+    return tenure === 'specific dates' || tenure === 'specific date';
+  }, [selectedProject]);
+
+  // Automatically auto-fetch and set period dates whenever selected project or tenure mode changes
+  useEffect(() => {
+    if (!selectedProject) return;
+
+    const tenure = (selectedProject?.billingTenure || selectedProject?.BillingTenure || '').trim().toLowerCase();
+
+    if (tenure === 'specific dates' || tenure === 'specific date') {
+      const fromDate = selectedProject.billingFromDate || selectedProject.BillingFromDate || selectedProject.billing_from_date;
+      const toDate = selectedProject.billingToDate || selectedProject.BillingToDate || selectedProject.billing_to_date;
+
+      if (fromDate && toDate) {
+        const fDate = toISODateString(fromDate);
+        const tDate = toISODateString(toDate);
+        if (fDate && tDate) {
+          setStartDate(fDate);
+          setEndDate(tDate);
+        }
+      }
+    } else {
+      const curMonth = selectedMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      const { start, end } = getMonthRange(curMonth);
+      setStartDate(start);
+      setEndDate(end);
+    }
+  }, [selectedProject, selectedMonth]);
 
   const dynamicSubtitle = useMemo(() => {
     const cust = selectedCustomer?.name?.split(' (')[0] || selectedCustomer?.name;
@@ -156,6 +197,38 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     setProjectId("");
     setLocationId("");
     setVehicleType("");
+
+    const curMonth = selectedMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const { start, end } = getMonthRange(curMonth);
+    setStartDate(start);
+    setEndDate(end);
+  };
+
+  const handleProjectChange = (id: string) => {
+    setProjectId(id);
+    setLocationId("");
+    setVehicleType("");
+
+    const proj = projects.find((p: any) => String(p.id) === String(id) || String(p.name) === String(id));
+    const tenure = (proj?.billingTenure || proj?.BillingTenure || '').trim().toLowerCase();
+
+    if (tenure === 'specific dates' || tenure === 'specific date') {
+      const fromDate = proj?.billingFromDate || proj?.BillingFromDate || proj?.billing_from_date;
+      const toDate = proj?.billingToDate || proj?.BillingToDate || proj?.billing_to_date;
+      if (fromDate && toDate) {
+        const fDate = toISODateString(fromDate);
+        const tDate = toISODateString(toDate);
+        if (fDate && tDate) {
+          setStartDate(fDate);
+          setEndDate(tDate);
+        }
+      }
+    } else {
+      const curMonth = selectedMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      const { start, end } = getMonthRange(curMonth);
+      setStartDate(start);
+      setEndDate(end);
+    }
   };
 
   const createInvoiceMutation = useCreateVendorInvoice();
@@ -617,11 +690,7 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                 <label className="text-sm font-medium">Project</label>
                 <select
                   value={projectId}
-                  onChange={(e) => {
-                    setProjectId(e.target.value);
-                    setLocationId("");
-                    setVehicleType("");
-                  }}
+                  onChange={(e) => handleProjectChange(e.target.value)}
                   disabled={!customerId || isMasterLoading}
                   className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
@@ -678,14 +747,61 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                 </Select>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium">Period</label>
-                <div className="flex items-center gap-2">
-                  <input type="date" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" value={startDate} onChange={e => setStartDate(e.target.value)} />
-                  <span className="text-muted-foreground text-sm font-medium">to</span>
-                  <input type="date" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" value={endDate} onChange={e => setEndDate(e.target.value)} />
+              {isSpecificDatesTenure ? (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">Period</label>
+                    <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                      Specific Dates
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="date" 
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" 
+                      value={startDate} 
+                      onChange={e => setStartDate(e.target.value)} 
+                    />
+                    <span className="text-muted-foreground text-sm font-medium">to</span>
+                    <input 
+                      type="date" 
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" 
+                      value={endDate} 
+                      onChange={e => setEndDate(e.target.value)} 
+                    />
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium">Period</label>
+                    <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                      Monthly
+                    </span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <input 
+                      type="month" 
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" 
+                      value={selectedMonth} 
+                      onChange={e => {
+                        const m = e.target.value;
+                        setSelectedMonth(m);
+                        if (m) {
+                          const { start, end } = getMonthRange(m);
+                          setStartDate(start);
+                          setEndDate(end);
+                        }
+                      }} 
+                    />
+                    {startDate && endDate && (
+                      <p className="text-xs text-muted-foreground font-medium">
+                        Selected Period: <span className="text-foreground font-semibold">{startDate.split('-').reverse().join('-')}</span> to <span className="text-foreground font-semibold">{endDate.split('-').reverse().join('-')}</span>
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Issue Date</label>
@@ -1110,8 +1226,14 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                         const v = n % 100;
                         return n + (s[(v - 20) % 10] || s[v] || s[0]);
                       };
-                      const start = startDate ? new Date(startDate) : new Date();
-                      const end = endDate ? new Date(endDate) : new Date();
+                      const start = startDate ? (startDate.includes('T') || startDate.includes('-') ? (() => {
+                        const [y, m, d] = startDate.split('T')[0].split('-').map(Number);
+                        return new Date(y, m - 1, d);
+                      })() : new Date(startDate)) : new Date();
+                      const end = endDate ? (endDate.includes('T') || endDate.includes('-') ? (() => {
+                        const [y, m, d] = endDate.split('T')[0].split('-').map(Number);
+                        return new Date(y, m - 1, d);
+                      })() : new Date(endDate)) : new Date();
                       const startMonth = start.toLocaleDateString('en-GB', { month: 'long' });
                       const endMonth = end.toLocaleDateString('en-GB', { month: 'long' });
                       const year = end.getFullYear();

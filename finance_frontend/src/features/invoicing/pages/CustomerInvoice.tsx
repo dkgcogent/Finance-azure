@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from "react"
+import React, { useMemo, useState, useRef, useEffect } from "react"
 import { useNavigate } from "react-router-dom"
 import * as XLSX from "xlsx"
 import { ColumnDef } from "@tanstack/react-table"
@@ -46,8 +46,60 @@ export default function CustomerInvoice() {
   const [invoiceProject, setInvoiceProject] = useState("")
   const [invoiceSubProject, setInvoiceSubProject] = useState("")
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
-  const [startDate, setStartDate] = useState("")
-  const [endDate, setEndDate] = useState("")
+  const [selectedMonth, setSelectedMonth] = useState<string>(() => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+  });
+
+  const toISODateString = (val: any): string => {
+    if (!val) return '';
+    if (typeof val === 'string') {
+      const s = val.trim();
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+        return s.slice(0, 10);
+      }
+      const dmyMatch = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
+      if (dmyMatch) {
+        const day = dmyMatch[1].padStart(2, '0');
+        const month = dmyMatch[2].padStart(2, '0');
+        const year = dmyMatch[3];
+        return `${year}-${month}-${day}`;
+      }
+    }
+    const dt = new Date(val);
+    if (!isNaN(dt.getTime())) {
+      const y = dt.getFullYear();
+      const m = String(dt.getMonth() + 1).padStart(2, '0');
+      const d = String(dt.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    return '';
+  };
+
+  const getMonthRange = (monthStr: string) => {
+    if (!monthStr) return { start: '', end: '' };
+    const [yStr, mStr] = monthStr.split('-');
+    const y = parseInt(yStr, 10);
+    const m = parseInt(mStr, 10);
+    if (isNaN(y) || isNaN(m)) return { start: '', end: '' };
+    const start = `${y}-${String(m).padStart(2, '0')}-01`;
+    const lastDay = new Date(y, m, 0).getDate();
+    const end = `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+    return { start, end };
+  };
+
+  const [startDate, setStartDate] = useState(() => {
+    const today = new Date();
+    const mStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    const [y, m] = mStr.split('-').map(Number);
+    return `${y}-${String(m).padStart(2, '0')}-01`;
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const today = new Date();
+    const [y, m] = [today.getFullYear(), today.getMonth() + 1];
+    const lastDay = new Date(y, m, 0).getDate();
+    return `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  });
   const [reportData, setReportData] = useState<{ 
     misData: any[], 
     annexureData: any[], 
@@ -84,9 +136,40 @@ export default function CustomerInvoice() {
     [customers, invoiceCustomer]
   )
   const selectedProject = useMemo(() =>
-    projects.find((p: any) => String(p.id) === String(invoiceProject)),
+    projects.find((p: any) => String(p.id) === String(invoiceProject) || String(p.name) === String(invoiceProject)),
     [projects, invoiceProject]
   )
+
+  const isSpecificDatesTenure = useMemo(() => {
+    const tenure = (selectedProject?.billingTenure || selectedProject?.BillingTenure || '').trim().toLowerCase();
+    return tenure === 'specific dates' || tenure === 'specific date';
+  }, [selectedProject]);
+
+  // Automatically auto-fetch and set period dates whenever selected project or tenure mode changes
+  useEffect(() => {
+    if (!selectedProject) return;
+
+    const tenure = (selectedProject?.billingTenure || selectedProject?.BillingTenure || '').trim().toLowerCase();
+
+    if (tenure === 'specific dates' || tenure === 'specific date') {
+      const fromDate = selectedProject.billingFromDate || selectedProject.BillingFromDate || selectedProject.billing_from_date;
+      const toDate = selectedProject.billingToDate || selectedProject.BillingToDate || selectedProject.billing_to_date;
+
+      if (fromDate && toDate) {
+        const fDate = toISODateString(fromDate);
+        const tDate = toISODateString(toDate);
+        if (fDate && tDate) {
+          setStartDate(fDate);
+          setEndDate(tDate);
+        }
+      }
+    } else {
+      const curMonth = selectedMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      const { start, end } = getMonthRange(curMonth);
+      setStartDate(start);
+      setEndDate(end);
+    }
+  }, [selectedProject, selectedMonth]);
 
   const dynamicSubtitle = useMemo(() => {
     const cust = selectedCustomer?.name?.split(' (')[0] || selectedCustomer?.name;
@@ -133,7 +216,6 @@ export default function CustomerInvoice() {
     return 'unknown'
   }, [selectedCustomer])
 
-  // Smart date defaults by ecosystem
   const handleCustomerChange = (customerId: string) => {
     setInvoiceCustomer(customerId)
     setInvoiceProject("")
@@ -142,22 +224,39 @@ export default function CustomerInvoice() {
     setInvoiceType("")
     setReportData(null)
 
-    const cust = customers.find((c: any) => String(c.id) === customerId)
-    const custStr = ((cust?.name || '') + (cust?.code || '')).toLowerCase()
-    const today = new Date()
+    // Reset default dates based on selectedMonth
+    const curMonth = selectedMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const { start, end } = getMonthRange(curMonth);
+    setStartDate(start);
+    setEndDate(end);
+  }
 
-    if (custStr.includes('rqs') || custStr.includes('qwik') || custStr.includes('reliance')) {
-      // Reliance: 25th prev month → 24th this month
-      const start = new Date(today.getFullYear(), today.getMonth() - 1, 25)
-      const end = new Date(today.getFullYear(), today.getMonth(), 24)
-      setStartDate(start.toISOString().slice(0, 10))
-      setEndDate(end.toISOString().slice(0, 10))
+  const handleProjectChange = (projectId: string) => {
+    setInvoiceProject(projectId);
+    setInvoiceSubProject("");
+    setInvoiceLocation("");
+    setInvoiceType("");
+    setReportData(null);
+
+    const proj = projects.find((p: any) => String(p.id) === String(projectId) || String(p.name) === String(projectId));
+    const tenure = (proj?.billingTenure || proj?.BillingTenure || '').trim().toLowerCase();
+
+    if (tenure === 'specific dates' || tenure === 'specific date') {
+      const fromDate = proj?.billingFromDate || proj?.BillingFromDate || proj?.billing_from_date;
+      const toDate = proj?.billingToDate || proj?.BillingToDate || proj?.billing_to_date;
+      if (fromDate && toDate) {
+        const fDate = toISODateString(fromDate);
+        const tDate = toISODateString(toDate);
+        if (fDate && tDate) {
+          setStartDate(fDate);
+          setEndDate(tDate);
+        }
+      }
     } else {
-      // Flipkart / default: 1st → last day of this month
-      const start = new Date(today.getFullYear(), today.getMonth(), 1)
-      const end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
-      setStartDate(start.toISOString().slice(0, 10))
-      setEndDate(end.toISOString().slice(0, 10))
+      const curMonth = selectedMonth || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+      const { start, end } = getMonthRange(curMonth);
+      setStartDate(start);
+      setEndDate(end);
     }
   }
 
@@ -881,12 +980,7 @@ export default function CustomerInvoice() {
                   <label className="text-sm font-medium">Project</label>
                   <select
                     value={invoiceProject}
-                    onChange={(e) => {
-                      setInvoiceProject(e.target.value);
-                      setInvoiceSubProject("");
-                      setInvoiceLocation("");
-                      setInvoiceType("");
-                    }}
+                    onChange={(e) => handleProjectChange(e.target.value)}
                     disabled={!invoiceCustomer || isMasterLoading}
                     className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -926,14 +1020,58 @@ export default function CustomerInvoice() {
                     <option value="Adhoc">Adhoc</option>
                   </select>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Period</label>
-                  <div className="flex items-center gap-2">
-                    <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
-                    <span className="text-muted-foreground text-sm font-medium">to</span>
-                    <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                {isSpecificDatesTenure ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">Period</label>
+                      <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                        Specific Dates
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Input 
+                        type="date" 
+                        value={startDate} 
+                        onChange={(e) => setStartDate(e.target.value)} 
+                      />
+                      <span className="text-muted-foreground text-sm font-medium">to</span>
+                      <Input 
+                        type="date" 
+                        value={endDate} 
+                        onChange={(e) => setEndDate(e.target.value)} 
+                      />
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium">Period</label>
+                      <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                        Monthly
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Input 
+                        type="month" 
+                        value={selectedMonth} 
+                        onChange={(e) => {
+                          const m = e.target.value;
+                          setSelectedMonth(m);
+                          if (m) {
+                            const { start, end } = getMonthRange(m);
+                            setStartDate(start);
+                            setEndDate(end);
+                          }
+                        }} 
+                      />
+                      {startDate && endDate && (
+                        <p className="text-xs text-muted-foreground font-medium">
+                          Selected Period: <span className="text-foreground font-semibold">{startDate.split('-').reverse().join('-')}</span> to <span className="text-foreground font-semibold">{endDate.split('-').reverse().join('-')}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Invoice Date</label>
                   <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />

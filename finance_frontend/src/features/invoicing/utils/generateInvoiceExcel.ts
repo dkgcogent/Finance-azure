@@ -79,11 +79,15 @@ function fmtIndian(n: number, decimals = 2): string {
 const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
 function fmtDate(d?: string): string {
   if (!d) return "";
-  const parts = d.split("-");
+  const parts = d.split("T")[0].split("-");
   if (parts.length === 3 && parts[0].length === 4) {
-    const dt = new Date(d);
+    const y = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const dt = new Date(y, m, day);
     if (!isNaN(dt.getTime())) {
-      return `${dt.getDate()}-${MONTHS[dt.getMonth()]}-${dt.getFullYear()}`;
+      const dd = String(dt.getDate()).padStart(2, '0');
+      return `${dd} ${MONTHS[dt.getMonth()]} ${dt.getFullYear()}`;
     }
   }
   return d;
