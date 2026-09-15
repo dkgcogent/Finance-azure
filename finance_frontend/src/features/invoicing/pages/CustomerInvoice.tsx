@@ -46,26 +46,8 @@ export default function CustomerInvoice() {
   const [invoiceProject, setInvoiceProject] = useState("")
   const [invoiceSubProject, setInvoiceSubProject] = useState("")
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null)
-  const [periodMode, setPeriodMode] = useState<"monthly" | "specific">("monthly")
-  const [selectedMonth, setSelectedMonth] = useState(() => {
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    return `${y}-${m}`;
-  })
-  const [startDate, setStartDate] = useState(() => {
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, '0');
-    return `${y}-${m}-01`;
-  })
-  const [endDate, setEndDate] = useState(() => {
-    const today = new Date();
-    const y = today.getFullYear();
-    const m = today.getMonth() + 1;
-    const lastDay = new Date(y, m, 0).getDate();
-    return `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
-  })
+  const [startDate, setStartDate] = useState("")
+  const [endDate, setEndDate] = useState("")
   const [reportData, setReportData] = useState<{ 
     misData: any[], 
     annexureData: any[], 
@@ -91,7 +73,6 @@ export default function CustomerInvoice() {
   const [costCode, setCostCode] = useState("")
   const [previewInvoiceNumber, setPreviewInvoiceNumber] = useState("")
   const [noDataModalOpen, setNoDataModalOpen] = useState(false)
-  const [tenureValidationError, setTenureValidationError] = useState<string | null>(null)
 
   const { customers, projects, locations, isLoading: isMasterLoading } = useMasterData()
   
@@ -152,68 +133,7 @@ export default function CustomerInvoice() {
     return 'unknown'
   }, [selectedCustomer])
 
-  const formatDateForInput = (val: any) => {
-    if (!val) return '';
-    if (typeof val === 'string') {
-      if (/^\d{4}-\d{2}-\d{2}/.test(val)) return val.substring(0, 10);
-      const dmy = val.match(/^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})/);
-      if (dmy) return `${dmy[3]}-${dmy[2].padStart(2, '0')}-${dmy[1].padStart(2, '0')}`;
-    }
-    const d = new Date(val);
-    if (!isNaN(d.getTime())) {
-      const y = d.getFullYear();
-      const m = String(d.getMonth() + 1).padStart(2, '0');
-      const day = String(d.getDate()).padStart(2, '0');
-      return `${y}-${m}-${day}`;
-    }
-    return '';
-  };
-
-  const handleMonthChange = (monthStr: string) => {
-    setSelectedMonth(monthStr)
-    if (monthStr) {
-      const parts = monthStr.split('-')
-      if (parts.length === 2) {
-        const year = parseInt(parts[0], 10)
-        const month = parseInt(parts[1], 10)
-        const lastDay = new Date(year, month, 0).getDate()
-        const startFormatted = `${year}-${String(month).padStart(2, '0')}-01`
-        const endFormatted = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`
-        setStartDate(startFormatted)
-        setEndDate(endFormatted)
-        return
-      }
-    }
-    setStartDate("")
-    setEndDate("")
-  }
-
-  // Handle project change and automatically detect billing tenure from TMS
-  const handleProjectChange = (projectId: string) => {
-    setInvoiceProject(projectId)
-    setInvoiceSubProject("")
-    setInvoiceLocation("")
-    setInvoiceType("")
-    setReportData(null)
-
-    const proj = projects.find((p: any) => String(p.id) === String(projectId))
-    const tenure = (proj?.billingTenure || selectedCustomer?.billingTenure || '').trim().toLowerCase()
-
-    if (tenure.includes('specific') || tenure.includes('date')) {
-      setPeriodMode('specific')
-      const from = formatDateForInput(proj?.billingFromDate || selectedCustomer?.billingFromDate)
-      const to = formatDateForInput(proj?.billingToDate || selectedCustomer?.billingToDate)
-      if (from) setStartDate(from)
-      if (to) setEndDate(to)
-    } else {
-      setPeriodMode('monthly')
-      if (selectedMonth) {
-        handleMonthChange(selectedMonth)
-      }
-    }
-  }
-
-  // Handle customer change
+  // Smart date defaults by ecosystem
   const handleCustomerChange = (customerId: string) => {
     setInvoiceCustomer(customerId)
     setInvoiceProject("")
@@ -222,20 +142,22 @@ export default function CustomerInvoice() {
     setInvoiceType("")
     setReportData(null)
 
-    const cust = customers.find((c: any) => String(c.id) === String(customerId))
-    const tenure = (cust?.billingTenure || '').trim().toLowerCase()
+    const cust = customers.find((c: any) => String(c.id) === customerId)
+    const custStr = ((cust?.name || '') + (cust?.code || '')).toLowerCase()
+    const today = new Date()
 
-    if (tenure.includes('specific') || tenure.includes('date')) {
-      setPeriodMode('specific')
-      const from = formatDateForInput(cust?.billingFromDate)
-      const to = formatDateForInput(cust?.billingToDate)
-      if (from) setStartDate(from)
-      if (to) setEndDate(to)
+    if (custStr.includes('rqs') || custStr.includes('qwik') || custStr.includes('reliance')) {
+      // Reliance: 25th prev month → 24th this month
+      const start = new Date(today.getFullYear(), today.getMonth() - 1, 25)
+      const end = new Date(today.getFullYear(), today.getMonth(), 24)
+      setStartDate(start.toISOString().slice(0, 10))
+      setEndDate(end.toISOString().slice(0, 10))
     } else {
-      setPeriodMode('monthly')
-      if (selectedMonth) {
-        handleMonthChange(selectedMonth)
-      }
+      // Flipkart / default: 1st → last day of this month
+      const start = new Date(today.getFullYear(), today.getMonth(), 1)
+      const end = new Date(today.getFullYear(), today.getMonth() + 1, 0)
+      setStartDate(start.toISOString().slice(0, 10))
+      setEndDate(end.toISOString().slice(0, 10))
     }
   }
 
@@ -452,14 +374,6 @@ export default function CustomerInvoice() {
         setCostCode("")
         setReportData(null)
         setInvoiceDate(new Date().toISOString().split('T')[0])
-        const today = new Date()
-        const y = today.getFullYear()
-        const m = String(today.getMonth() + 1).padStart(2, '0')
-        const monthStr = `${y}-${m}`
-        const lastDay = new Date(y, today.getMonth() + 1, 0).getDate()
-        setSelectedMonth(monthStr)
-        setStartDate(`${monthStr}-01`)
-        setEndDate(`${monthStr}-${String(lastDay).padStart(2, '0')}`)
       }
     })
   }
@@ -967,7 +881,12 @@ export default function CustomerInvoice() {
                   <label className="text-sm font-medium">Project</label>
                   <select
                     value={invoiceProject}
-                    onChange={(e) => handleProjectChange(e.target.value)}
+                    onChange={(e) => {
+                      setInvoiceProject(e.target.value);
+                      setInvoiceSubProject("");
+                      setInvoiceLocation("");
+                      setInvoiceType("");
+                    }}
                     disabled={!invoiceCustomer || isMasterLoading}
                     className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
@@ -1008,97 +927,12 @@ export default function CustomerInvoice() {
                   </select>
                 </div>
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <label className="text-sm font-medium">
-                        Period {periodMode === 'specific' ? '(Specific Dates)' : '(Month)'}
-                      </label>
-                      {selectedProject && (
-                        <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-blue-200 text-blue-700 bg-blue-50 dark:bg-blue-950/40 dark:text-blue-300">
-                          TMS: {selectedProject.billingTenure || 'Monthly'}
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPeriodMode('monthly');
-                          if (selectedMonth) handleMonthChange(selectedMonth);
-                        }}
-                        className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
-                          periodMode === 'monthly'
-                            ? 'bg-blue-100 text-blue-700 font-semibold dark:bg-blue-900/40 dark:text-blue-300'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        Monthly
-                      </button>
-                      <span className="text-muted-foreground/40">|</span>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setPeriodMode('specific');
-                          const from = formatDateForInput(selectedProject?.billingFromDate || selectedCustomer?.billingFromDate);
-                          const to = formatDateForInput(selectedProject?.billingToDate || selectedCustomer?.billingToDate);
-                          if (from) setStartDate(from);
-                          if (to) setEndDate(to);
-                        }}
-                        className={`px-2 py-0.5 rounded transition-all cursor-pointer ${
-                          periodMode === 'specific'
-                            ? 'bg-blue-100 text-blue-700 font-semibold dark:bg-blue-900/40 dark:text-blue-300'
-                            : 'text-muted-foreground hover:text-foreground'
-                        }`}
-                      >
-                        Specific Dates
-                      </button>
-                    </div>
+                  <label className="text-sm font-medium">Period</label>
+                  <div className="flex items-center gap-2">
+                    <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                    <span className="text-muted-foreground text-sm font-medium">to</span>
+                    <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                   </div>
-                  {periodMode === 'specific' ? (
-                    <div className="flex items-center gap-2">
-                      <Input 
-                        type="date" 
-                        value={startDate} 
-                        onChange={(e) => setStartDate(e.target.value)} 
-                      />
-                      <span className="text-muted-foreground text-sm font-medium">to</span>
-                      <Input 
-                        type="date" 
-                        value={endDate} 
-                        onChange={(e) => setEndDate(e.target.value)} 
-                      />
-                    </div>
-                  ) : (
-                    <Input 
-                      type="month" 
-                      value={selectedMonth} 
-                      onChange={(e) => handleMonthChange(e.target.value)} 
-                    />
-                  )}
-
-                  {/* Realtime Tenure Mismatch Warning */}
-                  {selectedProject && (() => {
-                    const tenure = (selectedProject?.billingTenure || '').trim().toLowerCase();
-                    const isMonthly = !tenure || tenure.includes('monthly');
-                    const isSpecific = tenure.includes('specific') || tenure.includes('date');
-                    if (isMonthly && periodMode === 'specific') {
-                      return (
-                        <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          <span>Project is aligned with Monthly tenure in TMS. It cannot proceed with Specific Dates.</span>
-                        </div>
-                      );
-                    }
-                    if (isSpecific && periodMode === 'monthly') {
-                      return (
-                        <div className="flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium mt-1">
-                          <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-                          <span>Project is aligned with Specific Dates tenure in TMS. It cannot proceed with Monthly selection.</span>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Invoice Date</label>
@@ -1543,30 +1377,6 @@ export default function CustomerInvoice() {
                   disabled={reportMutation.isPending || createInvoiceMutation.isPending}
                   onClick={() => {
                     if (createStep === "details") {
-                      // Tenure Validation
-                      const projectTenure = (selectedProject?.billingTenure || selectedCustomer?.billingTenure || '').trim();
-                      const isMonthlyTenure = !projectTenure || projectTenure.toLowerCase().includes('monthly');
-                      const isSpecificTenure = projectTenure.toLowerCase().includes('specific') || projectTenure.toLowerCase().includes('date');
-
-                      if (isMonthlyTenure && periodMode === 'specific') {
-                        setTenureValidationError(
-                          `Project "${selectedProject?.name || 'Selected Project'}" is configured with Monthly billing tenure in TMS. It cannot proceed with Specific Dates. Please switch to Monthly selection.`
-                        );
-                        return;
-                      }
-
-                      if (isSpecificTenure && periodMode === 'monthly') {
-                        setTenureValidationError(
-                          `Project "${selectedProject?.name || 'Selected Project'}" is configured with Specific Dates billing tenure in TMS. It cannot proceed with Monthly selection. Please switch to Specific Dates.`
-                        );
-                        return;
-                      }
-
-                      if (!startDate || !endDate) {
-                        setTenureValidationError("Please ensure a valid period (start and end date) is selected before proceeding.");
-                        return;
-                      }
-
                       reportMutation.mutate({
                         customerId: Number(invoiceCustomer),
                         projectId: Number(invoiceProject),
@@ -1673,67 +1483,6 @@ export default function CustomerInvoice() {
           </div>
         </div>
       )}
-
-      {/* Validation Modal: Tenure Mismatch */}
-      <Modal
-        isOpen={!!tenureValidationError}
-        onClose={() => setTenureValidationError(null)}
-        size="md"
-      >
-        <div className="flex flex-col items-center text-center p-2">
-          <div className="w-14 h-14 rounded-full bg-red-100 dark:bg-red-950/40 text-red-600 flex items-center justify-center mb-4">
-            <Ban className="w-8 h-8" />
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
-            Billing Tenure Mismatch
-          </h3>
-          <p className="text-sm text-muted-foreground mb-5 leading-relaxed">
-            {tenureValidationError}
-          </p>
-          <div className="w-full bg-muted/40 rounded-xl p-3.5 text-xs text-left space-y-2 border mb-6 text-muted-foreground">
-            <div className="flex justify-between">
-              <span className="font-semibold text-foreground">Project:</span>
-              <span>{selectedProject?.name || '—'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="font-semibold text-foreground">Configured Tenure in TMS:</span>
-              <span className="font-bold text-blue-600 dark:text-blue-400">{selectedProject?.billingTenure || selectedCustomer?.billingTenure || 'Monthly'}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="font-semibold text-foreground">Current Selection Mode:</span>
-              <span className="font-bold text-red-600 dark:text-red-400">{periodMode === 'monthly' ? 'Monthly' : 'Specific Dates'}</span>
-            </div>
-          </div>
-          <div className="flex gap-3 w-full">
-            <Button
-              variant="outline"
-              className="flex-1 py-2 rounded-xl text-sm"
-              onClick={() => setTenureValidationError(null)}
-            >
-              Cancel
-            </Button>
-            <Button
-              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-xl text-sm"
-              onClick={() => {
-                const projectTenure = (selectedProject?.billingTenure || selectedCustomer?.billingTenure || '').trim().toLowerCase();
-                if (projectTenure.includes('specific') || projectTenure.includes('date')) {
-                  setPeriodMode('specific');
-                  const from = formatDateForInput(selectedProject?.billingFromDate || selectedCustomer?.billingFromDate);
-                  const to = formatDateForInput(selectedProject?.billingToDate || selectedCustomer?.billingToDate);
-                  if (from) setStartDate(from);
-                  if (to) setEndDate(to);
-                } else {
-                  setPeriodMode('monthly');
-                  if (selectedMonth) handleMonthChange(selectedMonth);
-                }
-                setTenureValidationError(null);
-              }}
-            >
-              Align with TMS
-            </Button>
-          </div>
-        </div>
-      </Modal>
 
       {/* Validation Modal: No Data Found */}
       <Modal
