@@ -152,6 +152,13 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
     }
   }, [selectedProject, selectedMonth]);
 
+  // Automatically sync issueDate to the period's end date
+  useEffect(() => {
+    if (endDate) {
+      setIssueDate(endDate);
+    }
+  }, [endDate]);
+
   const dynamicSubtitle = useMemo(() => {
     const cust = selectedCustomer?.name?.split(' (')[0] || selectedCustomer?.name;
     const proj = selectedProject?.name;
@@ -758,14 +765,16 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                   <div className="flex items-center gap-2">
                     <input 
                       type="date" 
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" 
+                      disabled
+                      className="flex h-10 w-full rounded-md border border-input bg-muted/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" 
                       value={startDate} 
                       onChange={e => setStartDate(e.target.value)} 
                     />
                     <span className="text-muted-foreground text-sm font-medium">to</span>
                     <input 
                       type="date" 
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" 
+                      disabled
+                      className="flex h-10 w-full rounded-md border border-input bg-muted/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" 
                       value={endDate} 
                       onChange={e => setEndDate(e.target.value)} 
                     />
@@ -782,7 +791,8 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
                   <div className="space-y-1.5">
                     <input 
                       type="month" 
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" 
+                      disabled
+                      className="flex h-10 w-full rounded-md border border-input bg-muted/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" 
                       value={selectedMonth} 
                       onChange={e => {
                         const m = e.target.value;
@@ -805,7 +815,13 @@ export default function NewVendorBill({ onCancel }: { onCancel?: () => void }) {
 
               <div className="space-y-2">
                 <label className="text-sm font-medium">Issue Date</label>
-                <input type="date" className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" value={issueDate} onChange={e => setIssueDate(e.target.value)} />
+                <input 
+                  type="date" 
+                  disabled
+                  className="flex h-10 w-full rounded-md border border-input bg-muted/50 px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50" 
+                  value={issueDate} 
+                  onChange={e => setIssueDate(e.target.value)} 
+                />
               </div>
 
               <div className="space-y-2">

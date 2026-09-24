@@ -120,7 +120,12 @@ export default function CustomerInvoice() {
   } | null>(null)
   // Metadata fields
   const [workOrderNo, setWorkOrderNo] = useState("")
-  const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0])
+  const [invoiceDate, setInvoiceDate] = useState(() => {
+    const today = new Date();
+    const [y, m] = [today.getFullYear(), today.getMonth() + 1];
+    const lastDay = new Date(y, m, 0).getDate();
+    return `${y}-${String(m).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  })
   const [serviceProviderCode, setServiceProviderCode] = useState("")
   const [costCode, setCostCode] = useState("")
   const [previewInvoiceNumber, setPreviewInvoiceNumber] = useState("")
@@ -170,6 +175,13 @@ export default function CustomerInvoice() {
       setEndDate(end);
     }
   }, [selectedProject, selectedMonth]);
+
+  // Automatically sync invoiceDate to the period's end date
+  useEffect(() => {
+    if (endDate) {
+      setInvoiceDate(endDate);
+    }
+  }, [endDate]);
 
   const dynamicSubtitle = useMemo(() => {
     const cust = selectedCustomer?.name?.split(' (')[0] || selectedCustomer?.name;
@@ -1033,12 +1045,16 @@ export default function CustomerInvoice() {
                         type="date" 
                         value={startDate} 
                         onChange={(e) => setStartDate(e.target.value)} 
+                        disabled
+                        className="bg-muted/50 cursor-not-allowed"
                       />
                       <span className="text-muted-foreground text-sm font-medium">to</span>
                       <Input 
                         type="date" 
                         value={endDate} 
                         onChange={(e) => setEndDate(e.target.value)} 
+                        disabled
+                        className="bg-muted/50 cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -1063,6 +1079,8 @@ export default function CustomerInvoice() {
                             setEndDate(end);
                           }
                         }} 
+                        disabled
+                        className="bg-muted/50 cursor-not-allowed"
                       />
                       {startDate && endDate && (
                         <p className="text-xs text-muted-foreground font-medium">
@@ -1074,7 +1092,13 @@ export default function CustomerInvoice() {
                 )}
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Invoice Date</label>
-                  <Input type="date" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+                  <Input 
+                    type="date" 
+                    value={invoiceDate} 
+                    onChange={(e) => setInvoiceDate(e.target.value)} 
+                    disabled
+                    className="bg-muted/50 cursor-not-allowed"
+                  />
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium">Cost Code</label>
