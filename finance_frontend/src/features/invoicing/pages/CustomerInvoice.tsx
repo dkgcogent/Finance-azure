@@ -176,12 +176,20 @@ export default function CustomerInvoice() {
     }
   }, [selectedProject, selectedMonth]);
 
-  // Automatically sync invoiceDate to the period's end date
+  const todayStr = useMemo(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }, []);
+
+  // Automatically sync invoiceDate to the period's end date (not earlier than today)
   useEffect(() => {
     if (endDate) {
-      setInvoiceDate(endDate);
+      setInvoiceDate(endDate < todayStr ? todayStr : endDate);
     }
-  }, [endDate]);
+  }, [endDate, todayStr]);
 
   const dynamicSubtitle = useMemo(() => {
     const cust = selectedCustomer?.name?.split(' (')[0] || selectedCustomer?.name;
@@ -1045,16 +1053,12 @@ export default function CustomerInvoice() {
                         type="date" 
                         value={startDate} 
                         onChange={(e) => setStartDate(e.target.value)} 
-                        disabled
-                        className="bg-muted/50 cursor-not-allowed"
                       />
                       <span className="text-muted-foreground text-sm font-medium">to</span>
                       <Input 
                         type="date" 
                         value={endDate} 
                         onChange={(e) => setEndDate(e.target.value)} 
-                        disabled
-                        className="bg-muted/50 cursor-not-allowed"
                       />
                     </div>
                   </div>
@@ -1079,8 +1083,6 @@ export default function CustomerInvoice() {
                             setEndDate(end);
                           }
                         }} 
-                        disabled
-                        className="bg-muted/50 cursor-not-allowed"
                       />
                       {startDate && endDate && (
                         <p className="text-xs text-muted-foreground font-medium">
@@ -1095,9 +1097,8 @@ export default function CustomerInvoice() {
                   <Input 
                     type="date" 
                     value={invoiceDate} 
+                    min={todayStr}
                     onChange={(e) => setInvoiceDate(e.target.value)} 
-                    disabled
-                    className="bg-muted/50 cursor-not-allowed"
                   />
                 </div>
                 <div className="space-y-2">
